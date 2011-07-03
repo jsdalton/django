@@ -16,7 +16,7 @@ from django.db import (transaction, connection, connections, DEFAULT_DB_ALIAS,
 from django.http import QueryDict
 from django.test import _doctest as doctest
 from django.test.client import Client
-from django.test.utils import get_warnings_state, restore_warnings_state, override_settings
+from django.test.utils import get_warnings_state, restore_warnings_state, override_settings, _caches_used_during_test
 from django.utils import simplejson, unittest as ut2
 from django.utils.encoding import smart_str
 
@@ -251,6 +251,7 @@ class TransactionTestCase(ut2.TestCase):
               ROOT_URLCONF with it.
             * Clearing the mail test outbox.
         """
+        self._cache_setup()
         self._fixture_setup()
         self._urlconf_setup()
         mail.outbox = []
@@ -275,6 +276,13 @@ class TransactionTestCase(ut2.TestCase):
             self._old_root_urlconf = settings.ROOT_URLCONF
             settings.ROOT_URLCONF = self.urls
             clear_url_caches()
+
+    def _cache_setup(self):
+        """
+        Resets the list of caches used in preparation for test
+        """
+        global _caches_used_during_test
+        _caches_used_during_test.clear()
 
     def __call__(self, result=None):
         """
@@ -315,6 +323,7 @@ class TransactionTestCase(ut2.TestCase):
         """
         self._fixture_teardown()
         self._urlconf_teardown()
+        self._cache_teardown()
         # Some DB cursors include SQL statements as part of cursor
         # creation. If you have a test that does rollback, the effect
         # of these statements is lost, which can effect the operation
@@ -332,6 +341,13 @@ class TransactionTestCase(ut2.TestCase):
         if hasattr(self, '_old_root_urlconf'):
             settings.ROOT_URLCONF = self._old_root_urlconf
             clear_url_caches()
+    
+    def _cache_teardown(self):
+        """
+        Clears values set in cache during test
+        """
+        for cache in _caches_used_during_test:
+            cache.delete_many(list(cache._keys_set_during_test))
 
     def save_warnings_state(self):
         """

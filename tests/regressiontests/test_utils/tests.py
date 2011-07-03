@@ -1,9 +1,17 @@
 from __future__ import with_statement
 
 import sys
+import tempfile
 
 from django.test import TestCase, skipUnlessDBFeature, skipIfDBFeature
-from django.utils.unittest import skip
+from django.utils.unittest import skip, skipUnless
+from django.conf import settings
+from django.core import management
+from django.core.cache import get_cache, DEFAULT_CACHE_ALIAS
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 from models import Person
 
@@ -129,6 +137,169 @@ class SkippingExtraTests(TestCase):
     @skip("Fixture loading should not be performed for skipped tests.")
     def test_fixtures_are_skipped(self):
         pass
+
+
+# We must set this via a function to confirm that cache set test has run
+# before cache get test
+_cache_set_test_has_run = False
+
+def cache_set_test_run():
+    global _cache_set_test_has_run
+    _cache_set_test_has_run = True
+
+def cache_get_test_finished():
+    global _cache_set_test_has_run
+    _cache_set_test_has_run = False
+
+
+class BaseCacheReset(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Setup everything here, because setupClass is guaranteed to run first
+        cache = cls.original_cache()
+
+        # Add a "pre-existing" value to cache to ensure it gets reset properly
+        cache.set('salt', 'pepper') # We won't touch this one
+        cache.set('sweet', 'sour') # We will touch a key with this name and check if it's restored at the end
+        
+        # Sanity checks
+        assert cache.get('salt') == 'pepper'
+        assert cache.get('sweet') == 'sour'
+
+        # We manually prefix the test_ here because we are not trying to pretend these are part
+        # of the original cache. We're just making sure the values exist so that we can call incr/decr
+        # without using cache.set() first
+        cache.orig_key_prefix = cache.key_prefix
+        cache.key_prefix = '_test_%s' % cache.orig_key_prefix
+        try:
+            cache.set('going_up', 1)
+            cache.set('going_down', 2)
+        finally:
+            cache.key_prefix = cache.orig_key_prefix
+
+    def setUp(self):
+        # Set up cache again at the instance level. This one will get reset
+        self.cache = self.modified_cache()
+
+
+class CacheResetTestsMixin(object):
+    # Note test names start with a/b. This ensures test order is correct (which we're normally
+    # not supposed to worry about)
+    def test_a_set_cache_in_various_ways_in_one_test_method(self):
+        """
+        Set some cache stuff in this method, and then we'll sure it doesn't carry over to the next
+        """
+        self.cache.set('sweet', 'salty')
+        self.cache.set('left', 'right')
+        self.cache.add('up', 'down')
+        
+        assert self.cache.get('going_up') == 1
+        self.cache.incr('going_up')
+        
+        assert self.cache.get('going_down') == 2
+        self.cache.decr('going_down')
+        
+        self.cache.set_many({'over': 'under', 'above': 'below'})
+
+        # Sanity checks
+        self.assertEqual(self.cache.get('sweet'), 'salty')
+        self.assertEqual(self.cache.get('left'), 'right')
+        self.assertEqual(self.cache.get('up'), 'down')
+        self.assertEqual(self.cache.get('going_up'), 2)
+        self.assertEqual(self.cache.get('going_down'), 1)
+        self.assertEqual(self.cache.get('over'), 'under')
+        self.assertEqual(self.cache.get('above'), 'below')
+
+        # Mark that set_cache tests have run
+        cache_set_test_run()
+
+    def test_b_get_cache_in_another_test_method(self):
+        # Confirm that set tests has already run
+        if not _cache_set_test_has_run:
+            self.skipTest("set_cache test did not run first!")
+
+        try:
+            self.assertEqual(self.cache.get('left'), None)
+            self.assertEqual(self.cache.get('up'), None)
+            self.assertEqual(self.cache.get('going_up'), None)
+            self.assertEqual(self.cache.get('going_down'), None)
+            self.assertEqual(self.cache.get('over'), None)
+            self.assertEqual(self.cache.get('above'), None)
+
+            # Make sure pre-existing values are still correct
+            original_cache = self.__class__.original_cache()
+            self.assertEqual(original_cache.get('sweet'), 'sour')
+            self.assertEqual(original_cache.get('salt'), 'pepper')
+        finally:
+            # Mark get_cache tests finished
+            cache_get_test_finished()
+
+
+class LocMemCacheResetTests(BaseCacheReset, CacheResetTestsMixin):
+    backend_name = 'django.core.cache.backends.locmem.LocMemCache'
+
+    @classmethod
+    def original_cache(cls):
+        if not hasattr(cls, '_original_cache'):
+            from django.core.cache import original_get_cache
+            cls._original_cache = original_get_cache(cls.backend_name, LOCATION='test')
+        return cls._original_cache
+
+    def modified_cache(self):
+        return get_cache(self.backend_name, LOCATION='test')
+
+
+class FileBasedCacheResetTests(BaseCacheReset, CacheResetTestsMixin):
+    backend_name = 'django.core.cache.backends.filebased.FileBasedCache'
+
+    @classmethod
+    def original_cache(cls):
+        if not hasattr(cls, '_original_cache'):
+            cls.cache_dirname = tempfile.mkdtemp()
+            from django.core.cache import original_get_cache
+            cls._original_cache = original_get_cache(cls.backend_name, LOCATION=cls.cache_dirname)
+        return cls._original_cache
+
+    def modified_cache(self):
+        return get_cache(self.backend_name, LOCATION=self.cache_dirname)
+
+
+class DBCacheResetTests(BaseCacheReset, CacheResetTestsMixin):
+    backend_name = 'django.core.cache.backends.db.DatabaseCache'
+
+    @classmethod
+    def original_cache(cls):
+        if not hasattr(cls, '_original_cache'):
+            cls.cache_table_name = 'test_cache_table'
+            management.call_command('createcachetable', cls.cache_table_name, verbosity=0, interactive=False)
+            from django.core.cache import original_get_cache
+            cls._original_cache = original_get_cache(cls.backend_name, LOCATION=cls.cache_table_name)
+        return cls._original_cache
+
+    def modified_cache(self):
+        return get_cache(self.backend_name, LOCATION=self.cache_table_name)
+
+    @classmethod
+    def tearDownClass(cls):
+        from django.db import connection
+        cursor = connection.cursor()
+        cursor.execute('DROP TABLE %s' % connection.ops.quote_name(cls.cache_table_name))
+
+
+@skipUnless(settings.CACHES[DEFAULT_CACHE_ALIAS]['BACKEND'].startswith('django.core.cache.backends.memcached.'), "memcached not available")
+class MemcachedCacheResetTests(BaseCacheReset, CacheResetTestsMixin):
+    backend_name = 'django.core.cache.backends.memcached.MemcachedCache'
+
+    @classmethod
+    def original_cache(cls):
+        if not hasattr(cls, '_original_cache'):
+            cls.memcached_location = settings.CACHES[DEFAULT_CACHE_ALIAS]['LOCATION']
+            from django.core.cache import original_get_cache
+            cls._original_cache = original_get_cache(cls.backend_name, LOCATION=cls.memcached_location)
+        return cls._original_cache
+
+    def modified_cache(self):
+        return get_cache(self.backend_name, LOCATION=self.memcached_location)
 
 
 __test__ = {"API_TEST": r"""

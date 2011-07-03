@@ -2,10 +2,11 @@ from __future__ import with_statement
 
 import sys
 import time
+import types
 import os
 import warnings
 from django.conf import settings, UserSettingsHolder
-from django.core import mail
+from django.core import mail, cache
 from django.core.mail.backends import locmem
 from django.test.signals import template_rendered, setting_changed
 from django.template import Template, loader, TemplateDoesNotExist
@@ -66,6 +67,63 @@ def instrumented_test_render(self, context):
     return self.nodelist.render(context)
 
 
+_caches_used_during_test = set()
+
+def modified_get_cache(backend, **kwargs):
+    """
+    Modifies the original get_cache so that we can track any keys set during a cache run and reset
+    them at the end.
+    """
+    requested_cache = cache.original_get_cache(backend, **kwargs)
+    
+    # Add '_test_' to key_prefix to ensure pre-existing cache values don't get touched
+    requested_cache.original_key_prefix = requested_cache.key_prefix
+    requested_cache.key_prefix = '_test_%s' % requested_cache.original_key_prefix
+    
+    # Keep track of which caches we use during a test
+    global _caches_used_during_test
+    _caches_used_during_test.add(requested_cache)
+    
+    requested_cache._keys_set_during_test = set()
+    
+    # Modify cache.set() to collect keys in _keys_set_during_test
+    requested_cache.original_set = requested_cache.set
+    def modified_set(self, key, value, timeout=None, version=None):
+        requested_cache._keys_set_during_test.add(key)
+        requested_cache.original_set(key, value, timeout, version)
+    requested_cache.set = types.MethodType(modified_set, requested_cache)
+    
+    # Modify cache.add() to collect keys in _keys_set_during_test
+    requested_cache.original_add = requested_cache.add
+    def modified_add(self, key, value, timeout=None, version=None):
+        requested_cache._keys_set_during_test.add(key)
+        requested_cache.original_add(key, value, timeout, version)
+    requested_cache.add = types.MethodType(modified_add, requested_cache)
+    
+    # Modify cache.incr() to collect keys in _keys_set_during_test
+    requested_cache.original_incr = requested_cache.incr
+    def modified_incr(self, key, delta=1, version=None):
+        requested_cache._keys_set_during_test.add(key)
+        requested_cache.original_incr(key, delta, version)
+    requested_cache.incr = types.MethodType(modified_incr, requested_cache)
+    
+    # Modify cache.decr() to collect keys in _keys_set_during_test
+    requested_cache.original_decr = requested_cache.decr
+    def modified_decr(self, key, delta=1, version=None):
+        requested_cache._keys_set_during_test.add(key)
+        requested_cache.original_decr(key, delta, version)
+    requested_cache.decr = types.MethodType(modified_decr, requested_cache)
+    
+    # Modify cache.set_many() to collect keys in _keys_set_during_test
+    requested_cache.original_set_many = requested_cache.set_many
+    def modified_set_many(self, data, timeout=None, version=None):
+        requested_cache._keys_set_during_test.update(data.keys())
+        requested_cache.original_set_many(data, timeout, version)
+    requested_cache.set_many = types.MethodType(modified_set_many, requested_cache)
+    
+    return requested_cache
+
+
 def setup_test_environment():
     """Perform any global pre-test setup. This involves:
 
@@ -78,8 +136,14 @@ def setup_test_environment():
 
     mail.original_email_backend = settings.EMAIL_BACKEND
     settings.EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
-
     mail.outbox = []
+    
+    cache.original_get_cache = cache.get_cache
+    cache.get_cache = modified_get_cache
+    
+    # Make sure django.core.cache.cache also uses the modified cache
+    cache.original_cache = cache.cache
+    cache.cache = cache.get_cache(cache.DEFAULT_CACHE_ALIAS)
 
     deactivate()
 
@@ -96,8 +160,12 @@ def teardown_test_environment():
 
     settings.EMAIL_BACKEND = mail.original_email_backend
     del mail.original_email_backend
-
     del mail.outbox
+    
+    cache.cache = cache.original_cache
+    del cache.original_cache
+    cache.get_cache = cache.original_get_cache
+    del cache.original_get_cache
 
 
 def get_warnings_state():
