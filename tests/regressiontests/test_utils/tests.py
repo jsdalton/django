@@ -189,26 +189,37 @@ class CacheResetTestsMixin(object):
         """
         Set some cache stuff in this method, and then we'll sure it doesn't carry over to the next
         """
-        self.cache.set('sweet', 'salty')
-        self.cache.set('left', 'right')
-        self.cache.add('up', 'down')
+        sweet_result = self.cache.set('sweet', 'bitter')
+        left_result = self.cache.set('left', 'right')
+        loud_result = self.cache.add('loud', 'quiet')
         
         assert self.cache.get('going_up') == 1
-        self.cache.incr('going_up')
+        going_up_result = self.cache.incr('going_up')
         
         assert self.cache.get('going_down') == 2
-        self.cache.decr('going_down')
+        going_down_result = self.cache.decr('going_down')
         
-        self.cache.set_many({'over': 'under', 'above': 'below'})
+        over_above_result = self.cache.set_many({'over': 'under', 'above': 'below'})
 
         # Sanity checks
-        self.assertEqual(self.cache.get('sweet'), 'salty')
+        self.assertEqual(self.cache.get('sweet'), 'bitter')
+        self.assertEqual(sweet_result, None)
+        
         self.assertEqual(self.cache.get('left'), 'right')
-        self.assertEqual(self.cache.get('up'), 'down')
+        self.assertEqual(left_result, None)
+        
+        self.assertEqual(self.cache.get('loud'), 'quiet')
+        self.assertEqual(loud_result, True)
+        
         self.assertEqual(self.cache.get('going_up'), 2)
+        self.assertEqual(going_up_result, 2)
+        
         self.assertEqual(self.cache.get('going_down'), 1)
+        self.assertEqual(going_down_result, 1)
+        
         self.assertEqual(self.cache.get('over'), 'under')
         self.assertEqual(self.cache.get('above'), 'below')
+        self.assertEqual(over_above_result, None)
 
         # Mark that set_cache tests have run
         cache_set_test_run()
@@ -220,7 +231,7 @@ class CacheResetTestsMixin(object):
 
         try:
             self.assertEqual(self.cache.get('left'), None)
-            self.assertEqual(self.cache.get('up'), None)
+            self.assertEqual(self.cache.get('loud'), None)
             self.assertEqual(self.cache.get('going_up'), None)
             self.assertEqual(self.cache.get('going_down'), None)
             self.assertEqual(self.cache.get('over'), None)

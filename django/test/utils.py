@@ -97,21 +97,21 @@ def modified_get_cache(backend, **kwargs):
     requested_cache.original_add = requested_cache.add
     def modified_add(self, key, value, timeout=None, version=None):
         requested_cache._keys_set_during_test.add(key)
-        requested_cache.original_add(key, value, timeout, version)
+        return requested_cache.original_add(key, value, timeout, version)
     requested_cache.add = types.MethodType(modified_add, requested_cache)
     
     # Modify cache.incr() to collect keys in _keys_set_during_test
     requested_cache.original_incr = requested_cache.incr
     def modified_incr(self, key, delta=1, version=None):
         requested_cache._keys_set_during_test.add(key)
-        requested_cache.original_incr(key, delta, version)
+        return requested_cache.original_incr(key, delta, version)
     requested_cache.incr = types.MethodType(modified_incr, requested_cache)
     
     # Modify cache.decr() to collect keys in _keys_set_during_test
     requested_cache.original_decr = requested_cache.decr
     def modified_decr(self, key, delta=1, version=None):
         requested_cache._keys_set_during_test.add(key)
-        requested_cache.original_decr(key, delta, version)
+        return requested_cache.original_decr(key, delta, version)
     requested_cache.decr = types.MethodType(modified_decr, requested_cache)
     
     # Modify cache.set_many() to collect keys in _keys_set_during_test
