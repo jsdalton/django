@@ -8,10 +8,6 @@ from django.utils.unittest import skip, skipUnless
 from django.conf import settings
 from django.core import management
 from django.core.cache import get_cache, DEFAULT_CACHE_ALIAS
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
 
 from models import Person
 
