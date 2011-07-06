@@ -1021,6 +1021,24 @@ class ValidationTests(unittest.TestCase):
             list_per_page = 100
 
         validate(ValidationTestModelAdmin, ValidationTestModel)
+    
+    def test_max_show_all_allowed_validation(self):
+
+        class ValidationTestModelAdmin(ModelAdmin):
+            list_max_show_all = 'hello'
+
+        self.assertRaisesRegexp(
+            ImproperlyConfigured,
+            "'ValidationTestModelAdmin.list_max_show_all' should be an integer.",
+            validate,
+            ValidationTestModelAdmin,
+            ValidationTestModel,
+        )
+
+        class ValidationTestModelAdmin(ModelAdmin):
+            list_max_show_all = 200
+
+        validate(ValidationTestModelAdmin, ValidationTestModel)
 
     def test_search_fields_validation(self):
 
