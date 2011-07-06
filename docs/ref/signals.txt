@@ -516,6 +516,39 @@ Arguments sent with this signal:
     The :class:`~django.template.Context` with which the template was
     rendered.
 
+test_setup
+----------
+
+.. data:: django.test.signals.test_setup
+   :module:
+
+.. versionadded:: 1.4
+
+Sent during global pre-test setup, just after applications have loaded and
+the test suite has been built. This signal is not emitted during normal
+operation.
+
+Arguments sent with this signal:
+
+    sender
+        The :class:`~django.test.simple.DjangoTestSuiteRunner` object.
+
+test_teardown
+-------------
+
+.. data:: django.test.signals.test_teardown
+   :module:
+
+.. versionadded:: 1.4
+
+Sent during global post-test breakdown. This signal is not emitted during
+normal operation.
+
+Arguments sent with this signal:
+
+    sender
+        The :class:`~django.test.simple.DjangoTestSuiteRunner` object.
+
 Database Wrappers
 =================
 

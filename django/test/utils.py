@@ -7,7 +7,7 @@ import warnings
 from django.conf import settings, UserSettingsHolder
 from django.core import mail
 from django.core.mail.backends import locmem
-from django.test.signals import template_rendered, setting_changed
+from django.test.signals import template_rendered, setting_changed, test_setup, test_teardown
 from django.template import Template, loader, TemplateDoesNotExist
 from django.template.loaders import cached
 from django.utils.translation import deactivate
@@ -66,7 +66,7 @@ def instrumented_test_render(self, context):
     return self.nodelist.render(context)
 
 
-def setup_test_environment():
+def setup_test_environment(**kwargs):
     """Perform any global pre-test setup. This involves:
 
         - Installing the instrumented test renderer
@@ -82,9 +82,9 @@ def setup_test_environment():
     mail.outbox = []
 
     deactivate()
+test_setup.connect(setup_test_environment)
 
-
-def teardown_test_environment():
+def teardown_test_environment(**kwargs):
     """Perform any global post-test teardown. This involves:
 
         - Restoring the original test renderer
@@ -98,6 +98,7 @@ def teardown_test_environment():
     del mail.original_email_backend
 
     del mail.outbox
+test_teardown.connect(teardown_test_environment)
 
 
 def get_warnings_state():

@@ -6,6 +6,7 @@ from django.db.models import get_app, get_apps
 from django.test import _doctest as doctest
 from django.test.utils import setup_test_environment, teardown_test_environment
 from django.test.testcases import OutputChecker, DocTestRunner, TestCase
+from django.test.signals import test_setup, test_teardown
 from django.utils import unittest
 from django.utils.importlib import import_module
 from django.utils.module_loading import module_has_submodule
@@ -227,7 +228,7 @@ class DjangoTestSuiteRunner(object):
         self.failfast = failfast
 
     def setup_test_environment(self, **kwargs):
-        setup_test_environment()
+        test_setup.send(sender=self)
         settings.DEBUG = False
         unittest.installHandler()
 
@@ -325,7 +326,7 @@ class DjangoTestSuiteRunner(object):
 
     def teardown_test_environment(self, **kwargs):
         unittest.removeHandler()
-        teardown_test_environment()
+        test_teardown.send(sender=self) 
 
     def suite_result(self, suite, result, **kwargs):
         return len(result.failures) + len(result.errors)
@@ -349,8 +350,8 @@ class DjangoTestSuiteRunner(object):
 
         Returns the number of tests that failed.
         """
-        self.setup_test_environment()
         suite = self.build_suite(test_labels, extra_tests)
+        self.setup_test_environment()
         old_config = self.setup_databases()
         result = self.run_suite(suite)
         self.teardown_databases(old_config)
