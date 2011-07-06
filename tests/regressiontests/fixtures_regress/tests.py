@@ -12,7 +12,7 @@ from django.core import management
 from django.core.management.commands.dumpdata import sort_dependencies
 from django.core.management.base import CommandError
 from django.db.models import signals
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.test import TestCase, TransactionTestCase, skipIfDBFeature, \
     skipUnlessDBFeature
 
@@ -362,6 +362,35 @@ class TestFixtures(TestCase):
             """[{"pk": %d, "model": "fixtures_regress.widget", "fields": {"name": "grommet"}}]"""
             % widget.pk
             )
+    
+    def test_loaddata_works_when_fixture_has_forward_refs(self):
+        """
+        Regression for #3615 - Forward references cause fixtures not to load in MySQL (InnoDB)
+        """
+        management.call_command(
+            'loaddata',
+            'forward_ref.json',
+            verbosity=0,
+            commit=False
+        )
+        self.assertEqual(Book.objects.all()[0].id, 1)
+        self.assertEqual(Person.objects.all()[0].id, 4)
+    
+    def test_loaddata_raises_error_when_fixture_has_invalid_foreign_key(self):
+        """
+        Regression for #3615 - Ensure data with nonexistent child key references raises error
+        """
+        stderr = StringIO()
+        management.call_command(
+            'loaddata',
+            'forward_ref_bad_data.json',
+            verbosity=0,
+            commit=False,
+            stderr=stderr,
+        )
+        self.assertTrue(
+            stderr.getvalue().startswith('Problem installing fixture')
+        )
 
 
 class NaturalKeyFixtureTests(TestCase):

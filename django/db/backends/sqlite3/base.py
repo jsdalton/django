@@ -204,7 +204,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             self.connection.create_function("django_format_dtdelta", 5, _sqlite_format_dtdelta)
             connection_created.send(sender=self.__class__, connection=self)
         return self.connection.cursor(factory=SQLiteCursorWrapper)
-
+    
     def close(self):
         # If database is in memory, closing the connection destroys the
         # database. To prevent accidental data loss, ignore close requests on

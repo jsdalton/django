@@ -239,6 +239,53 @@ class BaseDatabaseWrapper(local):
         if self.savepoint_state:
             self._savepoint_commit(sid)
 
+    def disable_constraint_checking(self):
+        """
+        Backends can implement as needed to temporarily disable foreign key constraint
+        checking. If a backend does not require post-load constraint checking, then this method
+        can be overridden and False can be returned.
+        """
+        return True
+
+    def enable_constraint_checking(self):
+        """
+        Backends can implement as needed to re-enable foreign key constraint checking.
+        """
+        pass
+    
+    def check_constraints(self, table_names):
+        """
+        Checks each table name in table-names for rows with invalid foreign key references. This method is
+        intended to be used in conjunction with `disable_constraint_checking()` and `enable_constraint_checking()`, to
+        determine if rows with invalid references were entered while constraint checks were off.
+
+        Raises an IntegrityError on the first invalid foreign key reference encountered (if any) and provides
+        detailed information about the invalid reference in the error message.
+        
+        Backends can override this method if they can more directly apply constraint checking (e.g. via "SET CONSTRAINTS
+        ALL IMMEDIATE")
+        """
+        cursor = self.cursor()
+        for table_name in table_names:
+            primary_key_column_name = self.introspection.get_primary_key_column(cursor, table_name)
+            if not primary_key_column_name:
+                continue
+            key_columns = self.introspection.get_key_columns(cursor, table_name)
+            for column_name, referenced_table_name, referenced_column_name in key_columns:
+                cursor.execute("""
+                    SELECT REFERRING.`%s`, REFERRING.`%s` FROM `%s` as REFERRING
+                    LEFT JOIN `%s` as REFERRED
+                    ON (REFERRING.`%s` = REFERRED.`%s`)
+                    WHERE REFERRING.`%s` IS NOT NULL
+                        AND REFERRED.`%s` IS NULL"""
+                    % (primary_key_column_name, column_name, table_name, referenced_table_name,
+                       column_name, referenced_column_name, column_name, referenced_column_name))
+                for bad_row in cursor.fetchall():
+                    raise IntegrityError("The row in table '%s' with primary key '%s' has an invalid \
+foreign key: %s.%s contains a value '%s' that does not have a corresponding value in %s.%s."
+                                         % (table_name, bad_row[0], table_name, column_name, bad_row[1],
+                                            referenced_table_name, referenced_column_name))
+
     def close(self):
         if self.connection is not None:
             self.connection.close()
@@ -869,6 +916,19 @@ class BaseDatabaseIntrospection(object):
                         sequence_list.append({'table': f.m2m_db_table(), 'column': None})
 
         return sequence_list
+
+    def get_key_columns(self, cursor, table_name):
+        """
+        Backends should override this to return a list of (column_name, referenced_table_name,
+        referenced_column_name) for all key columns in given table.
+        """
+        return []
+    
+    def get_primary_key_column(self, cursor, table_name):
+        """
+        Backends should override this to return the column name of the primary key for the given table.
+        """
+        pass
 
 class BaseDatabaseClient(object):
     """

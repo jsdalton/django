@@ -8,7 +8,7 @@ from django.conf import settings
 from django.core import serializers
 from django.core.management.base import BaseCommand
 from django.core.management.color import no_style
-from django.db import connections, router, transaction, DEFAULT_DB_ALIAS
+from django.db import connections, router, transaction, DEFAULT_DB_ALIAS, models as db_models
 from django.db.models import get_apps
 from django.utils.itercompat import product
 
@@ -166,12 +166,21 @@ class Command(BaseCommand):
                                     (format, fixture_name, humanize(fixture_dir)))
                             try:
                                 objects = serializers.deserialize(format, fixture, using=using)
+                                constraint_checking_disabled = connection.disable_constraint_checking()
                                 for obj in objects:
                                     objects_in_fixture += 1
                                     if router.allow_syncdb(using, obj.object.__class__):
                                         loaded_objects_in_fixture += 1
                                         models.add(obj.object.__class__)
                                         obj.save(using=using)
+                                        
+                                # If we disabled constraint checks, then we should re-enable them and check for
+                                # any invalid keys that might have been added
+                                if constraint_checking_disabled:
+                                    connection.enable_constraint_checking()
+                                    table_names = [model._meta.db_table for model in models]
+                                    connection.check_constraints(table_names=table_names)
+                                    
                                 loaded_object_count += loaded_objects_in_fixture
                                 fixture_object_count += objects_in_fixture
                                 label_found = True

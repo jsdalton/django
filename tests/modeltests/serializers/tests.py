@@ -5,7 +5,7 @@ from xml.dom import minidom
 
 from django.conf import settings
 from django.core import serializers
-from django.db import transaction
+from django.db import transaction, connection
 from django.test import TestCase, TransactionTestCase, Approximate
 from django.utils import simplejson, unittest
 
@@ -252,8 +252,10 @@ class SerializersTransactionTestBase(object):
         transaction.enter_transaction_management()
         transaction.managed(True)
         objs = serializers.deserialize(self.serializer_name, self.fwd_ref_str)
+        connection.disable_constraint_checking()
         for obj in objs:
             obj.save()
+        connection.enable_constraint_checking()
         transaction.commit()
         transaction.leave_transaction_management()
 

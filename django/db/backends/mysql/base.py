@@ -25,7 +25,7 @@ if (version < (1,2,1) or (version[:3] == (1, 2, 1) and
 from MySQLdb.converters import conversions
 from MySQLdb.constants import FIELD_TYPE, CLIENT
 
-from django.db import utils
+from django.db import utils, IntegrityError
 from django.db.backends import *
 from django.db.backends.signals import connection_created
 from django.db.backends.mysql.client import DatabaseClient
@@ -349,3 +349,19 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                 raise Exception('Unable to determine MySQL version from version string %r' % self.connection.get_server_info())
             self.server_version = tuple([int(x) for x in m.groups()])
         return self.server_version
+
+    def disable_constraint_checking(self):
+        """
+        Disables foreign key checks, primarily for use in adding rows with forward references. Always returns True,
+        to indicate constraint checks have been disabled.
+        """
+        self.cursor().execute('SET foreign_key_checks=0')
+        return True
+
+    def enable_constraint_checking(self):
+        """
+        Re-enable foreign key checks after they have been disabled. Always returns True,
+        to indicate checks have been re-enabled.
+        """
+        self.cursor().execute('SET foreign_key_checks=1')
+        return True
