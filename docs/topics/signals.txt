@@ -231,7 +231,7 @@ Sending signals
 There are two ways to send send signals in Django.
 
 .. method:: Signal.send(sender, **kwargs)
-.. method:: Signal.send_robust(sender, **kwargs)
+.. method:: Signal.send_robust(sender, append_traceback=True, **kwargs)
 
 To send a signal, call either :meth:`Signal.send` or :meth:`Signal.send_robust`.
 You must provide the ``sender`` argument, and may provide as many other keyword
@@ -260,6 +260,15 @@ be notified of a signal in the face of an error.
 ``send_robust()`` catches all errors derived from Python's ``Exception`` class,
 and ensures all receivers are notified of the signal. If an error occurs, the
 error instance is returned in the tuple pair for the receiver that raised the error.
+If ``append_traceback`` is True, a ``traceback`` object with the call stack at the
+point where the exception occurred will also be added to the tuple. In that case,
+the tuple response would look like ``(receiver, error, traceback)``.
+
+
+.. versionchanged:: 1.4
+   A ``traceback`` object can be appended to the tuple response for a receiver that
+   raises an exception by setting ``append_traceback`` to ``True`` when calling
+   ``send_robust()``.
 
 Disconnecting signals
 =====================

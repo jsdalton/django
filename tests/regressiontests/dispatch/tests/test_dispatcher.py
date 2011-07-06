@@ -1,5 +1,6 @@
 import gc
 import sys
+from types import TracebackType
 
 from django.dispatch import Signal
 from django.utils import unittest
@@ -98,8 +99,13 @@ class DispatcherTests(unittest.TestCase):
         a_signal.connect(fails)
         result = a_signal.send_robust(sender=self, val="test")
         err = result[0][1]
+        self.assertEqual(len(result[0]), 2)
         self.assertTrue(isinstance(err, ValueError))
         self.assertEqual(err.args, ('this',))
+        
+        result = a_signal.send_robust(sender=self, append_traceback=True, val="test")
+        traceback = result[0][2]
+        self.assertTrue(isinstance(traceback, TracebackType))
         a_signal.disconnect(fails)
         self._testIsClean(a_signal)
 
