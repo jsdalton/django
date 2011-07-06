@@ -3,6 +3,7 @@ from django.contrib.auth import context_processors
 from django.contrib.auth.urls import urlpatterns
 from django.contrib.auth.views import password_reset
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.middleware import AuthenticationMiddleware
 from django.contrib.messages.api import info
 from django.http import HttpResponse
 from django.shortcuts import render_to_response
@@ -17,6 +18,13 @@ def remote_user_auth_view(request):
     return HttpResponse(t.render(c))
 
 def auth_processor_no_attr_access(request):
+    # Make sure to reset session and request.user before test
+    request.session.accessed = False
+    if hasattr(request, '_cached_user'):
+        del request._cached_user
+    auth_middleware = AuthenticationMiddleware()
+    auth_middleware.process_request(request)
+
     r1 = render_to_response('context_processors/auth_attrs_no_access.html',
         RequestContext(request, {}, processors=[context_processors.auth]))
     # *After* rendering, we check whether the session was accessed
@@ -24,6 +32,13 @@ def auth_processor_no_attr_access(request):
         {'session_accessed':request.session.accessed})
 
 def auth_processor_attr_access(request):
+    # Make sure to reset session and request.user before test
+    request.session.accessed = False
+    if hasattr(request, '_cached_user'):
+        del request._cached_user
+    auth_middleware = AuthenticationMiddleware()
+    auth_middleware.process_request(request)
+
     r1 = render_to_response('context_processors/auth_attrs_access.html',
         RequestContext(request, {}, processors=[context_processors.auth]))
     return render_to_response('context_processors/auth_attrs_test_access.html',
