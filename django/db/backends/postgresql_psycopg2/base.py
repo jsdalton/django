@@ -106,16 +106,23 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.introspection = DatabaseIntrospection(self)
         self.validation = BaseDatabaseValidation(self)
         self._pg_version = None
-    
-    def check_constraints(self, table_names=None):
+
+    def _disable_constraint_checking(self):
         """
-        To check constraints, we set constraints to immediate. Then, when, we're done we must ensure they
-        are returned to deferred.
+        Disables foreign key checks, primarily for use in adding rows with forward references. Always returns True,
+        to indicate constraint checks need to be re-enabled.
+        """
+        self.cursor().execute('SET CONSTRAINTS ALL DEFERRED')
+        self._constraint_checks_disabled = True
+
+    def _enable_constraint_checking(self):
+        """
+        Re-enable foreign key checks after they have been disabled.
         """
         try:
             self.cursor().execute('SET CONSTRAINTS ALL IMMEDIATE')
         finally:
-            self.cursor().execute('SET CONSTRAINTS ALL DEFERRED')
+            self._constraint_checks_disabled = False
 
     def _get_pg_version(self):
         if self._pg_version is None:

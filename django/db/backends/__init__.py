@@ -35,6 +35,8 @@ class BaseDatabaseWrapper(local):
         self.transaction_state = []
         self.savepoint_state = 0
         self._dirty = None
+        
+        self._constraint_checks_disabled = False
 
     def __eq__(self, other):
         return self.alias == other.alias
@@ -242,13 +244,18 @@ class BaseDatabaseWrapper(local):
     
     @contextmanager
     def constraint_checks_disabled(self):
-        disabled = self._disable_constraint_checking()
+        """
+        Disable constraint checks while this context manager is in effect. Note that if this context manager is nested,
+        only a single call to `_disable_constraint_checking` and `_enable_constraint_checking` occurs, at the top level.
+        """
+        if self._constraint_checks_disabled:
+            yield
+            return
+        self._disable_constraint_checking()
         try:
             yield
         finally:
-            if disabled:
-                self._enable_constraint_checking()
-        
+            self._enable_constraint_checking()   
     
     def _disable_constraint_checking(self):
         """

@@ -356,13 +356,16 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         to indicate constraint checks need to be re-enabled.
         """
         self.cursor().execute('SET foreign_key_checks=0')
-        return True
+        self._constraint_checks_disabled = True
 
     def _enable_constraint_checking(self):
         """
         Re-enable foreign key checks after they have been disabled.
         """
-        self.cursor().execute('SET foreign_key_checks=1')
+        try:
+            self.cursor().execute('SET foreign_key_checks=1')
+        finally:
+            self._constraint_checks_disabled = False
     
     def check_constraints(self, table_names):
         """
