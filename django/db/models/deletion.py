@@ -240,17 +240,18 @@ class Collector(object):
         for instances in self.data.itervalues():
             instances.reverse()
 
-        # delete batches
-        for model, batches in self.batches.iteritems():
-            query = sql.DeleteQuery(model)
-            for field, instances in batches.iteritems():
-                query.delete_batch([obj.pk for obj in instances], self.using, field)
+        with connections[self.using].constraint_checks_disabled():
+            # delete batches
+            for model, batches in self.batches.iteritems():
+                query = sql.DeleteQuery(model)
+                for field, instances in batches.iteritems():
+                    query.delete_batch([obj.pk for obj in instances], self.using, field)
 
-        # delete instances
-        for model, instances in self.data.iteritems():
-            query = sql.DeleteQuery(model)
-            pk_list = [obj.pk for obj in instances]
-            query.delete_batch(pk_list, self.using)
+            # delete instances
+            for model, instances in self.data.iteritems():
+                query = sql.DeleteQuery(model)
+                pk_list = [obj.pk for obj in instances]
+                query.delete_batch(pk_list, self.using)
 
         # send post_delete signals
         for model, obj in self.instances_with_model():
