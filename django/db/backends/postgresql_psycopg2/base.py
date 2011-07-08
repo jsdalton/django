@@ -106,6 +106,16 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.introspection = DatabaseIntrospection(self)
         self.validation = BaseDatabaseValidation(self)
         self._pg_version = None
+    
+    def check_constraints(self, table_names=None):
+        """
+        To check constraints, we set constraints to immediate. Then, when, we're done we must ensure they
+        are returned to deferred.
+        """
+        try:
+            self.cursor().execute('SET CONSTRAINTS ALL IMMEDIATE')
+        finally:
+            self.cursor().execute('SET CONSTRAINTS ALL DEFERRED')
 
     def _get_pg_version(self):
         if self._pg_version is None:
