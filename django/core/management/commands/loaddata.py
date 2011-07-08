@@ -8,7 +8,7 @@ from django.conf import settings
 from django.core import serializers
 from django.core.management.base import BaseCommand
 from django.core.management.color import no_style
-from django.db import connections, router, transaction, DEFAULT_DB_ALIAS, models as db_models
+from django.db import connections, router, transaction, DEFAULT_DB_ALIAS
 from django.db.models import get_apps
 from django.utils.itercompat import product
 
