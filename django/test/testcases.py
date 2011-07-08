@@ -588,6 +588,7 @@ class TestCase(TransactionTestCase):
                                                             'commit': False,
                                                             'database': db
                                                             })
+            connections[db]._enable_constraint_checking()
 
     def _fixture_teardown(self):
         if not connections_support_transactions():
