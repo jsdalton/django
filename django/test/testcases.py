@@ -580,9 +580,6 @@ class TestCase(TransactionTestCase):
 
         from django.contrib.sites.models import Site
         Site.objects.clear_cache()
-        
-        from django.contrib.contenttypes.models import ContentType
-        ContentType.objects.clear_cache()
 
         for db in databases:
             if hasattr(self, 'fixtures'):
