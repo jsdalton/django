@@ -179,7 +179,6 @@ class QueryTestCase(TestCase):
         # Reget the objects to clear caches
         dive = Book.objects.using('other').get(title="Dive into Python")
         mark = Person.objects.using('other').get(name="Mark Pilgrim")
-
         # Retrive related object by descriptor. Related objects should be database-baound
         self.assertEqual(list(dive.authors.all().values_list('name', flat=True)),
                           [u'Mark Pilgrim'])
@@ -730,10 +729,9 @@ class QueryTestCase(TestCase):
 
         temp = Book.objects.using('other').create(title="Temp",
                                                   published=datetime.date(2009, 5, 4))
-
+        assert False
         review1 = Review.objects.using('other').create(source="Python Weekly", content_object=dive)
         review2 = Review.objects.using('other').create(source="Python Monthly", content_object=temp)
-
         self.assertEqual(list(Review.objects.using('default').filter(object_id=dive.pk).values_list('source', flat=True)),
                           [])
         self.assertEqual(list(Review.objects.using('other').filter(object_id=dive.pk).values_list('source', flat=True)),

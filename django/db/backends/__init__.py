@@ -4,6 +4,7 @@ try:
 except ImportError:
     import dummy_thread as thread
 from threading import local
+from contextlib import contextmanager
 
 from django.conf import settings
 from django.db import DEFAULT_DB_ALIAS
@@ -238,53 +239,34 @@ class BaseDatabaseWrapper(local):
         """
         if self.savepoint_state:
             self._savepoint_commit(sid)
-
-    def disable_constraint_checking(self):
+    
+    @contextmanager
+    def constraint_checks_disabled(self):
+        disabled = self._disable_constraint_checking()
+        yield
+        if disabled:
+            self._enable_constraint_checking()
+        
+    
+    def _disable_constraint_checking(self):
         """
         Backends can implement as needed to temporarily disable foreign key constraint
-        checking. If a backend does not require post-load constraint checking, then this method
-        can be overridden and False can be returned.
+        checking.
         """
-        return True
+        pass
 
-    def enable_constraint_checking(self):
+    def _enable_constraint_checking(self):
         """
         Backends can implement as needed to re-enable foreign key constraint checking.
         """
         pass
     
-    def check_constraints(self, table_names):
+    def check_constraints(self, table_names=None):
         """
-        Checks each table name in table-names for rows with invalid foreign key references. This method is
-        intended to be used in conjunction with `disable_constraint_checking()` and `enable_constraint_checking()`, to
-        determine if rows with invalid references were entered while constraint checks were off.
-
-        Raises an IntegrityError on the first invalid foreign key reference encountered (if any) and provides
-        detailed information about the invalid reference in the error message.
-        
-        Backends can override this method if they can more directly apply constraint checking (e.g. via "SET CONSTRAINTS
-        ALL IMMEDIATE")
+        Backends can override this method if they can apply constraint checking (e.g. via "SET CONSTRAINTS
+        ALL IMMEDIATE"). Should raise an IntegrityError if any invalid foreign key references are encountered.
         """
-        cursor = self.cursor()
-        for table_name in table_names:
-            primary_key_column_name = self.introspection.get_primary_key_column(cursor, table_name)
-            if not primary_key_column_name:
-                continue
-            key_columns = self.introspection.get_key_columns(cursor, table_name)
-            for column_name, referenced_table_name, referenced_column_name in key_columns:
-                cursor.execute("""
-                    SELECT REFERRING.`%s`, REFERRING.`%s` FROM `%s` as REFERRING
-                    LEFT JOIN `%s` as REFERRED
-                    ON (REFERRING.`%s` = REFERRED.`%s`)
-                    WHERE REFERRING.`%s` IS NOT NULL
-                        AND REFERRED.`%s` IS NULL"""
-                    % (primary_key_column_name, column_name, table_name, referenced_table_name,
-                       column_name, referenced_column_name, column_name, referenced_column_name))
-                for bad_row in cursor.fetchall():
-                    raise IntegrityError("The row in table '%s' with primary key '%s' has an invalid \
-foreign key: %s.%s contains a value '%s' that does not have a corresponding value in %s.%s."
-                                         % (table_name, bad_row[0], table_name, column_name, bad_row[1],
-                                            referenced_table_name, referenced_column_name))
+        pass
 
     def close(self):
         if self.connection is not None:
@@ -919,16 +901,16 @@ class BaseDatabaseIntrospection(object):
 
     def get_key_columns(self, cursor, table_name):
         """
-        Backends should override this to return a list of (column_name, referenced_table_name,
+        Backends can override this to return a list of (column_name, referenced_table_name,
         referenced_column_name) for all key columns in given table.
         """
-        return []
+        raise NotImplementedError
     
     def get_primary_key_column(self, cursor, table_name):
         """
-        Backends should override this to return the column name of the primary key for the given table.
+        Backends can override this to return the column name of the primary key for the given table.
         """
-        pass
+        raise NotImplementedError
 
 class BaseDatabaseClient(object):
     """
