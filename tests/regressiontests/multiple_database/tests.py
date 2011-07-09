@@ -1702,7 +1702,7 @@ class SignalTests(TestCase):
         self.old_routers = router.routers
 
     def tearDown(self):
-        router.routser = self.old_routers
+        router.routers = self.old_routers
 
     def _write_to_other(self):
         "Sends all writes to 'other'."
