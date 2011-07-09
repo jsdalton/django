@@ -1,6 +1,11 @@
 from functools import wraps
 from operator import attrgetter
 
+# This is necessary in Python 2.5 to enable the with statement, in 2.6
+# and up it is no longer necessary.
+from __future__ import with_statement
+
+
 from django.db import connections, transaction, IntegrityError
 from django.db.models import signals, sql
 from django.db.models.sql.constants import GET_ITERATOR_CHUNK_SIZE

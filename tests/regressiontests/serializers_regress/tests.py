@@ -15,6 +15,11 @@ try:
 except ImportError:
     from StringIO import StringIO
 
+# This is necessary in Python 2.5 to enable the with statement, in 2.6
+# and up it is no longer necessary.
+from __future__ import with_statement
+
+
 from django.conf import settings
 from django.core import serializers, management
 from django.core.serializers import SerializerDoesNotExist

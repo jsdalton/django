@@ -4,6 +4,10 @@ import gzip
 import zipfile
 from optparse import make_option
 
+# This is necessary in Python 2.5 to enable the with statement, in 2.6
+# and up it is no longer necessary.
+from __future__ import with_statement
+
 from django.conf import settings
 from django.core import serializers
 from django.core.management.base import BaseCommand

@@ -3,6 +3,11 @@ from datetime import datetime
 from StringIO import StringIO
 from xml.dom import minidom
 
+# This is necessary in Python 2.5 to enable the with statement, in 2.6
+# and up it is no longer necessary.
+from __future__ import with_statement
+
+
 from django.conf import settings
 from django.core import serializers
 from django.db import transaction, connection
