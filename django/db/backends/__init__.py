@@ -242,22 +242,22 @@ class BaseDatabaseWrapper(local):
     
     @contextmanager
     def constraint_checks_disabled(self):
-        disabled = self._disable_constraint_checking()
+        disabled = self.disable_constraint_checking()
         try:
             yield
         finally:
             if disabled:
-                self._enable_constraint_checking()
+                self.enable_constraint_checking()
         
     
-    def _disable_constraint_checking(self):
+    def disable_constraint_checking(self):
         """
         Backends can implement as needed to temporarily disable foreign key constraint
         checking.
         """
         pass
 
-    def _enable_constraint_checking(self):
+    def enable_constraint_checking(self):
         """
         Backends can implement as needed to re-enable foreign key constraint checking.
         """

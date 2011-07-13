@@ -6,6 +6,8 @@ test case that is capable of testing the capabilities of
 the serializers. This includes all valid data values, plus
 forward, backwards and self references.
 """
+# This is necessary in Python 2.5 to enable the with statement, in 2.6
+# and up it is no longer necessary.
 from __future__ import with_statement
 
 import datetime

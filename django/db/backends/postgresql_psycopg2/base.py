@@ -112,10 +112,8 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         To check constraints, we set constraints to immediate. Then, when, we're done we must ensure they
         are returned to deferred.
         """
-        try:
-            self.cursor().execute('SET CONSTRAINTS ALL IMMEDIATE')
-        finally:
-            self.cursor().execute('SET CONSTRAINTS ALL DEFERRED')
+        self.cursor().execute('SET CONSTRAINTS ALL IMMEDIATE')
+        self.cursor().execute('SET CONSTRAINTS ALL DEFERRED')
 
     def _get_pg_version(self):
         if self._pg_version is None:

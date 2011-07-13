@@ -350,7 +350,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
             self.server_version = tuple([int(x) for x in m.groups()])
         return self.server_version
 
-    def _disable_constraint_checking(self):
+    def disable_constraint_checking(self):
         """
         Disables foreign key checks, primarily for use in adding rows with forward references. Always returns True,
         to indicate constraint checks need to be re-enabled.
@@ -358,7 +358,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.cursor().execute('SET foreign_key_checks=0')
         return True
 
-    def _enable_constraint_checking(self):
+    def enable_constraint_checking(self):
         """
         Re-enable foreign key checks after they have been disabled.
         """
