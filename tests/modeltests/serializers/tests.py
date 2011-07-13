@@ -13,8 +13,8 @@ from django.db import transaction, connection
 from django.test import TestCase, TransactionTestCase, Approximate
 from django.utils import simplejson, unittest
 
-from models import Category, Author, Article, AuthorProfile, Actor, \
-                                    Movie, Score, Player, Team
+from models import (Category, Author, Article, AuthorProfile,
+                    Actor, Movie, Score, Player, Team)
 
 class SerializerRegistrationTests(unittest.TestCase):
     def setUp(self):
