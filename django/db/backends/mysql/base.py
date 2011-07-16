@@ -364,7 +364,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         """
         self.cursor().execute('SET foreign_key_checks=1')
     
-    def check_constraints(self, table_names):
+    def check_constraints(self, table_names=None):
         """
         Checks each table name in table-names for rows with invalid foreign key references. This method is
         intended to be used in conjunction with `disable_constraint_checking()` and `enable_constraint_checking()`, to
@@ -377,6 +377,8 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         ALL IMMEDIATE")
         """
         cursor = self.cursor()
+        if table_names is None:
+            table_names = self.introspection.get_table_list(cursor)
         for table_name in table_names:
             primary_key_column_name = self.introspection.get_primary_key_column(cursor, table_name)
             if not primary_key_column_name:
