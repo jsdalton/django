@@ -350,7 +350,7 @@ class FkConstraintsTests(TransactionTestCase):
     
     def test_disable_constraint_checks_manually(self):
         """
-        When constraint checks are disabled, should be able to write to DB.
+        When constraint checks are disabled, should be able to write bad data without IntegrityErrors.
         """
         with transaction.commit_manually():
             # Create an Article.
@@ -368,6 +368,9 @@ class FkConstraintsTests(TransactionTestCase):
                 transaction.rollback()
     
     def test_disable_constraint_checks_context_manager(self):
+        """
+        When constraint checks are disabled (using context manager), should be able to write bad data without IntegrityErrors.
+        """
         with transaction.commit_manually():
             # Create an Article.
             models.Article.objects.create(headline="Test article", pub_date=datetime.datetime(2010, 9, 4), reporter=self.r)
@@ -383,6 +386,9 @@ class FkConstraintsTests(TransactionTestCase):
                 transaction.rollback()
     
     def test_check_constraints(self):
+        """
+        Constraint checks should raise an IntegrityError when bad data is in the DB.
+        """
         with transaction.commit_manually():
             # Create an Article.
             models.Article.objects.create(headline="Test article", pub_date=datetime.datetime(2010, 9, 4), reporter=self.r)
