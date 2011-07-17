@@ -2,8 +2,9 @@ from __future__ import with_statement
 
 from django.test import TestCase, skipUnlessDBFeature
 from django.utils.unittest import skip
+from django.db import IntegrityError
 
-from models import Person
+from models import Person, Pet
 
 
 class SkippingTestCase(TestCase):
@@ -85,6 +86,17 @@ class AssertNumQueriesContextManagerTests(TestCase):
             self.client.get("/test_utils/get_person/%s/" % person.pk)
             self.client.get("/test_utils/get_person/%s/" % person.pk)
 
+
+class TransactionPatchingTests(TestCase):
+    def test_bad_data_should_raise_data_integrity_error(self):
+        """
+        Ensure bad data cannot be saved to DB during tests.
+        """
+        bill = Person.objects.create(name="Bill")
+        dog = Pet.objects.create(name="Spot", owner=bill)
+        dog.owner_id = 20 # Does not exist
+        with self.assertRaises(IntegrityError):
+            dog.save()
 
 class SaveRestoreWarningState(TestCase):
     def test_save_restore_warnings_state(self):

@@ -39,6 +39,8 @@ def to_list(value):
 
 real_commit = transaction.commit
 real_rollback = transaction.rollback
+real_commit_unless_managed = transaction.commit_unless_managed
+real_rollback_unless_managed = transaction.rollback_unless_managed
 real_enter_transaction_management = transaction.enter_transaction_management
 real_leave_transaction_management = transaction.leave_transaction_management
 real_managed = transaction.managed
@@ -46,9 +48,20 @@ real_managed = transaction.managed
 def nop(*args, **kwargs):
     return
 
+def check_constraints(using=None):
+    """
+    Emulate the constraint check behavior that normally occurs when a transaction is rolled back or committed.
+    """
+    if using is None:
+        using = DEFAULT_DB_ALIAS
+    connection = connections[using]
+    connection.check_constraints()
+
 def disable_transaction_methods():
-    transaction.commit = nop
+    transaction.commit = check_constraints
     transaction.rollback = nop
+    transaction.commit_unless_managed = check_constraints
+    transaction.rollback_unless_managed = nop
     transaction.enter_transaction_management = nop
     transaction.leave_transaction_management = nop
     transaction.managed = nop
@@ -56,6 +69,8 @@ def disable_transaction_methods():
 def restore_transaction_methods():
     transaction.commit = real_commit
     transaction.rollback = real_rollback
+    transaction.commit_unless_managed = real_commit_unless_managed
+    transaction.rollback_unless_managed = real_rollback_unless_managed
     transaction.enter_transaction_management = real_enter_transaction_management
     transaction.leave_transaction_management = real_leave_transaction_management
     transaction.managed = real_managed
