@@ -25,7 +25,7 @@ if (version < (1,2,1) or (version[:3] == (1, 2, 1) and
 from MySQLdb.converters import conversions
 from MySQLdb.constants import FIELD_TYPE, CLIENT
 
-from django.db import utils, IntegrityError
+from django.db import utils
 from django.db.backends import *
 from django.db.backends.signals import connection_created
 from django.db.backends.mysql.client import DatabaseClient
@@ -394,7 +394,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                     % (primary_key_column_name, column_name, table_name, referenced_table_name,
                        column_name, referenced_column_name, column_name, referenced_column_name))
                 for bad_row in cursor.fetchall():
-                    raise IntegrityError("The row in table '%s' with primary key '%s' has an invalid \
+                    raise utils.IntegrityError("The row in table '%s' with primary key '%s' has an invalid \
 foreign key: %s.%s contains a value '%s' that does not have a corresponding value in %s.%s."
                                          % (table_name, bad_row[0], table_name, column_name, bad_row[1],
                                             referenced_table_name, referenced_column_name))

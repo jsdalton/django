@@ -236,7 +236,7 @@ class DatabaseWrapper(BaseDatabaseWrapper):
                     % (primary_key_column_name, column_name, table_name, referenced_table_name,
                        column_name, referenced_column_name, column_name, referenced_column_name))
                 for bad_row in cursor.fetchall():
-                    raise IntegrityError("The row in table '%s' with primary key '%s' has an invalid \
+                    raise utils.IntegrityError("The row in table '%s' with primary key '%s' has an invalid \
 foreign key: %s.%s contains a value '%s' that does not have a corresponding value in %s.%s."
                                          % (table_name, bad_row[0], table_name, column_name, bad_row[1],
                                             referenced_table_name, referenced_column_name))
