@@ -1,6 +1,6 @@
 from __future__ import with_statement
 
-from django.test import TestCase, skipUnlessDBFeature
+from django.test import TestCase, skipUnlessDBFeature, ignore_num_queries
 from django.utils.unittest import skip
 from django.db import IntegrityError
 
@@ -48,6 +48,15 @@ class AssertNumQueriesTests(TestCase):
             self.client.get("/test_utils/get_person/%s/" % person.pk)
             self.client.get("/test_utils/get_person/%s/" % person.pk)
         self.assertNumQueries(2, test_func)
+    
+    def test_assert_num_queries_ignore_decorator(self):
+        person = Person.objects.create(name='test')
+        
+        @ignore_num_queries
+        def test_func():
+            self.client.get("/test_utils/get_person/%s/" % person.pk)
+            self.client.get("/test_utils/get_person/%s/" % person.pk)
+        self.assertNumQueries(0, test_func)
 
 class AssertNumQueriesContextManagerTests(TestCase):
     urls = 'regressiontests.test_utils.urls'

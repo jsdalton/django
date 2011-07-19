@@ -23,6 +23,17 @@ from django.utils.encoding import smart_str
 __all__ = ('DocTestRunner', 'OutputChecker', 'TestCase', 'TransactionTestCase',
            'skipIfDBFeature', 'skipUnlessDBFeature')
 
+
+def ignore_num_queries(fn):
+    @wraps(fn)
+    def num_queries_ignored(*args, **kwargs):
+        connections._ignore_num_queries = True
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            connections._ignore_num_queries = False
+    return num_queries_ignored
+
 normalize_long_ints = lambda s: re.sub(r'(?<![\w])(\d+)L(?![\w])', '\\1', s)
 normalize_decimals = lambda s: re.sub(r"Decimal\('(\d+(\.\d*)?)'\)", lambda m: "Decimal(\"%s\")" % m.groups()[0], s)
 
@@ -48,6 +59,7 @@ real_managed = transaction.managed
 def nop(*args, **kwargs):
     return
 
+@ignore_num_queries
 def check_constraints(using=None):
     """
     Emulate the constraint check behavior that normally occurs when a transaction is rolled back or committed.

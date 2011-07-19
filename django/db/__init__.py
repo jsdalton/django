@@ -12,6 +12,7 @@ if DEFAULT_DB_ALIAS not in settings.DATABASES:
     raise ImproperlyConfigured("You must define a '%s' database" % DEFAULT_DB_ALIAS)
 
 connections = ConnectionHandler(settings.DATABASES)
+connections._ignore_num_queries = False
 
 router = ConnectionRouter(settings.DATABASE_ROUTERS)
 

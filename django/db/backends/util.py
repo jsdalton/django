@@ -29,6 +29,7 @@ class CursorWrapper(object):
 class CursorDebugWrapper(CursorWrapper):
 
     def execute(self, sql, params=()):
+        from django.db import connections
         start = time()
         try:
             return self.cursor.execute(sql, params)
@@ -36,10 +37,11 @@ class CursorDebugWrapper(CursorWrapper):
             stop = time()
             duration = stop - start
             sql = self.db.ops.last_executed_query(self.cursor, sql, params)
-            self.db.queries.append({
-                'sql': sql,
-                'time': "%.3f" % duration,
-            })
+            if not connections._ignore_num_queries:
+                self.db.queries.append({
+                    'sql': sql,
+                    'time': "%.3f" % duration,
+                })
             logger.debug('(%.3f) %s; args=%s' % (duration, sql, params),
                 extra={'duration':duration, 'sql':sql, 'params':params}
             )
