@@ -55,7 +55,9 @@ def check_constraints(using=None):
     if using is None:
         using = DEFAULT_DB_ALIAS
     connection = connections[using]
-    connection.check_constraints()
+    # Don't check constraints if they have been manually disabled
+    if not connection.constraint_checking_disabled:
+        connection.check_constraints()
 
 def disable_transaction_methods():
     transaction.commit = check_constraints

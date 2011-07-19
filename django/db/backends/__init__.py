@@ -34,6 +34,8 @@ class BaseDatabaseWrapper(local):
         self.transaction_state = []
         self.savepoint_state = 0
         self._dirty = None
+        
+        self.constraint_checking_disabled = False
 
     def __eq__(self, other):
         return self.alias == other.alias
@@ -241,11 +243,11 @@ class BaseDatabaseWrapper(local):
     
     @contextmanager
     def constraint_checks_disabled(self):
-        disabled = self.disable_constraint_checking()
+        self.disable_constraint_checking()
         try:
             yield
         finally:
-            if disabled:
+            if self.constraint_checking_disabled:
                 self.enable_constraint_checking()
         
     
@@ -254,13 +256,13 @@ class BaseDatabaseWrapper(local):
         Backends can implement as needed to temporarily disable foreign key constraint
         checking.
         """
-        pass
+        self.constraint_checking_disabled = True
 
     def enable_constraint_checking(self):
         """
         Backends can implement as needed to re-enable foreign key constraint checking.
         """
-        pass
+        self.constraint_checking_disabled = False
     
     def check_constraints(self, table_names=None):
         """

@@ -350,7 +350,8 @@ class FkConstraintsTests(TransactionTestCase):
     
     def test_disable_constraint_checks_manually(self):
         """
-        When constraint checks are disabled, should be able to write bad data without IntegrityErrors.
+        When constraint checks are disabled, should be able to write bad data without IntegrityErrors. Also,
+        should set disabled flag.
         """
         with transaction.commit_manually():
             # Create an Article.
@@ -360,6 +361,7 @@ class FkConstraintsTests(TransactionTestCase):
             a.reporter_id = 30
             try:
                 connection.disable_constraint_checking()
+                self.assertTrue(connection.constraint_checking_disabled)
                 a.save()
                 connection.enable_constraint_checking()
             except IntegrityError:
@@ -379,6 +381,7 @@ class FkConstraintsTests(TransactionTestCase):
             a.reporter_id = 30
             try:
                 with connection.constraint_checks_disabled():
+                    self.assertTrue(connection.constraint_checking_disabled)
                     a.save()
             except IntegrityError:
                 self.fail("IntegrityError should not have occurred.")
