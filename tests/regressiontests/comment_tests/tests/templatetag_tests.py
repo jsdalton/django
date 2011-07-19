@@ -42,7 +42,9 @@ class CommentTemplateTagTests(CommentTestCase):
     def testRenderCommentFormFromObjectWithQueryCount(self):
         def test():
             self.testRenderCommentFormFromObject()
-        self.assertNumQueries(1, test)
+        # 1 to select object
+        # 1 to get the contenttype
+        self.assertNumQueries(2, test)
 
     def testGetCommentCount(self, tag=None):
         self.createSomeComments()
