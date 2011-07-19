@@ -973,10 +973,20 @@ class RouterTestCase(TestCase):
         # Make the 'other' database appear to be a slave of the 'default'
         self.old_routers = router.routers
         router.routers = [TestRouter()]
+        
+        # Disable constraint checking, for now
+        for connection_name in connections:
+            connection = connections[connection_name]
+            connection.disable_constraint_checking()
 
     def tearDown(self):
         # Restore the 'other' database as an independent database
         router.routers = self.old_routers
+        
+        # Re-enable constraint checking
+        for connection_name in connections:
+            connection = connections[connection_name]
+            connection.enable_constraint_checking()
 
     def test_db_selection(self):
         "Check that querysets obey the router for db suggestions"
@@ -1692,9 +1702,19 @@ class SignalTests(TestCase):
 
     def setUp(self):
         self.old_routers = router.routers
+        
+        # Disable constraint checking, for now
+        for connection_name in connections:
+            connection = connections[connection_name]
+            connection.disable_constraint_checking()
 
     def tearDown(self):
         router.routers = self.old_routers
+        
+        # Re-enable constraint checking
+        for connection_name in connections:
+            connection = connections[connection_name]
+            connection.enable_constraint_checking()
 
     def _write_to_other(self):
         "Sends all writes to 'other'."
