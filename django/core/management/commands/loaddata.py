@@ -170,7 +170,7 @@ class Command(BaseCommand):
                                     (format, fixture_name, humanize(fixture_dir)))
                             try:
                                 objects = serializers.deserialize(format, fixture, using=using)
-                                
+
                                 with connection.constraint_checks_disabled():
                                     for obj in objects:
                                         objects_in_fixture += 1
@@ -178,12 +178,12 @@ class Command(BaseCommand):
                                             loaded_objects_in_fixture += 1
                                             models.add(obj.object.__class__)
                                             obj.save(using=using)
-                                        
+
                                 # Since we disabled constraint checks, we must manually check for
                                 # any invalid keys that might have been added
                                 table_names = [model._meta.db_table for model in models]
                                 connection.check_constraints(table_names=table_names)
-                                    
+
                                 loaded_object_count += loaded_objects_in_fixture
                                 fixture_object_count += objects_in_fixture
                                 label_found = True

@@ -555,7 +555,7 @@ A full explanation of this error output is beyond the scope of this document,
 but it's pretty intuitive. You can consult the documentation of Python's
 ``unittest`` library for details.
 
-Note that the return code for the test-runner script is the total number of
+Note that the return code for the test-runner script is 1 for any number of
 failed and erroneous tests. If all the tests pass, the return code is 0. This
 feature is useful if you're using the test-runner script in a shell script and
 need to test for success or failure at that level.
@@ -709,6 +709,15 @@ arguments at time of construction:
         ...will send the HTTP header ``HTTP_X_REQUESTED_WITH`` to the
         details view, which is a good way to test code paths that use the
         :meth:`django.http.HttpRequest.is_ajax()` method.
+
+        .. admonition:: CGI specification
+
+            The headers sent via ``**extra`` should follow CGI_ specification.
+            For example, emulating a different "Host" header as sent in the
+            HTTP request from the browser to the server should be passed
+            as ``HTTP_HOST``. 
+
+            .. _CGI: http://www.w3.org/CGI/
 
         If you already have the GET arguments in URL-encoded form, you can
         use that encoding instead of using the data argument. For example,

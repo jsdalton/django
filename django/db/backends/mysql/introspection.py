@@ -87,7 +87,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
                     pos = match.end()
                     key_columns.append(match.groups())
         return key_columns
-    
+
     def get_primary_key_column(self, cursor, table_name):
         """
         Returns the name of the primary key column for the given table

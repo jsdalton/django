@@ -131,7 +131,7 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             key_columns.append(tuple([s.strip('"') for s in m.groups()]))
 
         return key_columns
-        
+
     def get_indexes(self, cursor, table_name):
         """
         Returns a dictionary of fieldname -> infodict for the given table,
@@ -157,6 +157,21 @@ class DatabaseIntrospection(BaseDatabaseIntrospection):
             indexes[name]['unique'] = True
         return indexes
     
+    def get_primary_key_column(self, cursor, table_name):
+        """
+        Get the column name of the primary key for the given table.
+        """
+        # Don't use PRAGMA because that causes issues with some transactions
+        cursor.execute("SELECT sql FROM sqlite_master WHERE tbl_name = %s AND type = %s", [table_name, "table"])
+        results = cursor.fetchone()[0].strip()
+        results = results[results.index('(')+1:results.rindex(')')]
+        for field_desc in results.split(','):
+            field_desc = field_desc.strip()
+            m = re.search('"(.*)".*PRIMARY KEY$', field_desc)
+            if m:
+                return m.groups()[0]
+        return None
+
     def get_primary_key_column(self, cursor, table_name):
         """
         Get the column name of the primary key for the given table.

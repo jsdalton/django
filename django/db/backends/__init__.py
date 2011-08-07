@@ -908,7 +908,7 @@ class BaseDatabaseIntrospection(object):
         referenced_column_name) for all key columns in given table.
         """
         raise NotImplementedError
-    
+
     def get_primary_key_column(self, cursor, table_name):
         """
         Backends can override this to return the column name of the primary key for the given table.
