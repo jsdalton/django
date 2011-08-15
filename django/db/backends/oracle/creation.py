@@ -1,4 +1,5 @@
-import sys, time
+import sys
+import time
 from django.db.backends.creation import BaseDatabaseCreation
 
 TEST_DATABASE_PREFIX = 'test_'
@@ -270,3 +271,6 @@ class DatabaseCreation(BaseDatabaseCreation):
             settings_dict['NAME'],
             self._test_database_user(),
         )
+
+    def set_autocommit(self):
+        self.connection.connection.autocommit = True

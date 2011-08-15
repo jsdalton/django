@@ -3,11 +3,8 @@ The main QuerySet implementation. This provides the public API for the ORM.
 """
 
 import copy
-from itertools import izip
 
 from django.db import connections, router, transaction, IntegrityError
-from django.db.models.aggregates import Aggregate
-from django.db.models.fields import DateField
 from django.db.models.query_utils import (Q, select_related_descend,
     deferred_class_factory, InvalidQuery)
 from django.db.models.deletion import Collector
@@ -229,10 +226,6 @@ class QuerySet(object):
         only_load = self.query.get_loaded_field_names()
         if not fill_cache:
             fields = self.model._meta.fields
-            pk_idx = self.model._meta.pk_index()
-
-        index_start = len(extra_select)
-        aggregate_start = index_start + len(self.model._meta.fields)
 
         load_fields = []
         # If only/defer clauses have been specified,
@@ -241,9 +234,6 @@ class QuerySet(object):
             for field, model in self.model._meta.get_fields_with_model():
                 if model is None:
                     model = self.model
-                if field == self.model._meta.pk:
-                    # Record the index of the primary key when it is found
-                    pk_idx = len(load_fields)
                 try:
                     if field.name in only_load[model]:
                         # Add a field that has been explicitly included
@@ -252,6 +242,9 @@ class QuerySet(object):
                     # Model wasn't explicitly listed in the only_load table
                     # Therefore, we need to load all fields from this model
                     load_fields.append(field.name)
+
+        index_start = len(extra_select)
+        aggregate_start = index_start + len(load_fields or self.model._meta.fields)
 
         skip = None
         if load_fields and not fill_cache:
@@ -279,7 +272,6 @@ class QuerySet(object):
             else:
                 if skip:
                     row_data = row[index_start:aggregate_start]
-                    pk_val = row_data[pk_idx]
                     obj = model_cls(**dict(zip(init_list, row_data)))
                 else:
                     # Omit aggregates in object creation.

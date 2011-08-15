@@ -5,8 +5,8 @@ from django.db.backends.util import truncate_name
 from django.db.models.sql.constants import *
 from django.db.models.sql.datastructures import EmptyResultSet
 from django.db.models.sql.expressions import SQLEvaluator
-from django.db.models.sql.query import get_proxied_model, get_order_dir, \
-     select_related_descend, Query
+from django.db.models.sql.query import (get_proxied_model, get_order_dir,
+     select_related_descend, Query)
 from django.db.utils import DatabaseError
 
 class SQLCompiler(object):
@@ -169,7 +169,7 @@ class SQLCompiler(object):
                 if isinstance(col, (list, tuple)):
                     alias, column = col
                     table = self.query.alias_map[alias][TABLE_NAME]
-                    if table in only_load and col not in only_load[table]:
+                    if table in only_load and column not in only_load[table]:
                         continue
                     r = '%s.%s' % (qn(alias), qn(column))
                     if with_aliases:
