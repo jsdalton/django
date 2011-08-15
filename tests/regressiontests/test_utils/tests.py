@@ -1,6 +1,7 @@
 from __future__ import with_statement
 
-from django.test import TestCase, SimpleTestCase, skipUnlessDBFeature, ignore_num_queries
+from django.test import TestCase, SimpleTestCase, skipUnlessDBFeature
+from django.test.testcases import ignore_num_queries
 from django.utils.unittest import skip
 from django.db import IntegrityError
 
