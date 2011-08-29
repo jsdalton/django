@@ -1178,6 +1178,7 @@ basic functionality like:
 
  * Saving and restoring the Python warning machinery state.
  * Checking that a callable :meth:`raises a certain exeception <TestCase.assertRaisesMessage>`.
+ * :meth:`Testing form field rendering <assertFieldOutput>`.
 
 If you need any of the other more complex and heavyweight Django-specific
 features like:
@@ -1278,6 +1279,7 @@ already have some data in your database. See the :djadmin:`dumpdata
 documentation<dumpdata>` for more details.
 
 .. note::
+
     If you've ever run :djadmin:`manage.py syncdb<syncdb>`, you've
     already used a fixture without even knowing it! When you call
     :djadmin:`syncdb` in the database for the first time, Django
@@ -1522,6 +1524,26 @@ your test suite.
     failure. Similar to unittest's ``assertRaisesRegexp`` with the difference
     that ``expected_message`` isn't a regular expression.
 
+.. method:: assertFieldOutput(self, fieldclass, valid, invalid, field_args=None, field_kwargs=None, empty_value=u'')
+
+    Asserts that a form field behaves correctly with various inputs.
+
+    :param fieldclass: the class of the field to be tested.
+    :param valid: a dictionary mapping valid inputs to their expected cleaned
+        values.
+    :param invalid: a dictionary mapping invalid inputs to one or more raised
+        error messages.
+    :param field_args: the args passed to instantiate the field.
+    :param field_kwargs: the kwargs passed to instantiate the field.
+    :param empty_value: the expected clean output for inputs in ``EMPTY_VALUES``.
+
+    For example, the following code tests that an ``EmailField`` accepts
+    "a@a.com" as a valid email address, but rejects "aaa" with a reasonable
+    error message::
+
+        self.assertFieldOutput(EmailField, {'a@a.com': 'a@a.com'}, {'aaa': [u'Enter a valid e-mail address.']})
+
+
 .. method:: TestCase.assertContains(response, text, count=None, status_code=200, msg_prefix='')
 
     Asserts that a ``Response`` instance produced the given ``status_code`` and
@@ -1570,7 +1592,7 @@ your test suite.
     ``target_status_code`` will be the url and status code for the final
     point of the redirect chain.
 
-.. method:: TestCase.assertQuerysetEqual(qs, values, transform=repr)
+.. method:: TestCase.assertQuerysetEqual(qs, values, transform=repr, ordered=True)
 
     .. versionadded:: 1.3
 
@@ -1581,9 +1603,16 @@ your test suite.
     each value is compared. Any other callable can be used if ``repr()`` doesn't
     provide a unique or helpful comparison.
 
-    The comparison is also ordering dependent. If ``qs`` doesn't provide an
-    implicit ordering, you will need to apply a ``order_by()`` clause to your
-    queryset to ensure that the test will pass reliably.
+    By default, the comparison is also ordering dependent. If ``qs`` doesn't
+    provide an implicit ordering, you can set the ``ordered`` parameter to
+    ``False``, which turns the comparison into a Python set comparison.
+
+    .. versionchanged:: 1.4
+	The ``ordered`` parameter is new in version 1.4. In earlier versions,
+	you would need to ensure the queryset is ordered consistently, possibly
+	via an explicit ``order_by()`` call on the queryset prior to
+	comparison.
+
 
 .. method:: TestCase.assertNumQueries(num, func, *args, **kwargs)
 
@@ -1919,10 +1948,12 @@ utility methods in the ``django.test.utils`` module.
     magic hooks into the template system and restoring normal email
     services.
 
+.. currentmodule:: django.db.connection.creation
+
 The creation module of the database backend (``connection.creation``)
 also provides some utilities that can be useful during testing.
 
-.. function:: create_test_db(verbosity=1, autoclobber=False)
+.. function:: create_test_db([verbosity=1, autoclobber=False])
 
     Creates a new test database and runs ``syncdb`` against it.
 
@@ -1944,10 +1975,11 @@ also provides some utilities that can be useful during testing.
     :setting:`NAME` in :setting:`DATABASES` to match the name of the test
     database.
 
-.. function:: destroy_test_db(old_database_name, verbosity=1)
+.. function:: destroy_test_db(old_database_name, [verbosity=1])
 
-    Destroys the database whose name is in stored in :setting:`NAME` in the
-    :setting:`DATABASES`, and sets :setting:`NAME` to use the
-    provided name.
+    Destroys the database whose name is the value of :setting:`NAME` in
+    :setting:`DATABASES`, and sets :setting:`NAME` to the value of
+    ``old_database_name``.
 
-    ``verbosity`` has the same behavior as in ``run_tests()``.
+    The ``verbosity`` argument has the same behavior as for
+    :class:`~django.test.simple.DjangoTestSuiteRunner`.
