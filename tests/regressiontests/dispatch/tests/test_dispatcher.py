@@ -102,10 +102,12 @@ class DispatcherTests(unittest.TestCase):
         self.assertEqual(len(result[0]), 2)
         self.assertTrue(isinstance(err, ValueError))
         self.assertEqual(err.args, ('this',))
-        
-        result = a_signal.send_robust(sender=self, append_traceback=True, val="test")
-        traceback = result[0][2]
-        self.assertTrue(isinstance(traceback, TracebackType))
+
+        result = a_signal.send_robust(sender=self, exc_info=True, val="test")
+        exc_info_triple = result[0][1]
+        self.assertEqual(exc_info_triple[0], ValueError)
+        self.assertTrue(isinstance(exc_info_triple[1], ValueError))
+        self.assertTrue(isinstance(exc_info_triple[2], TracebackType))
         a_signal.disconnect(fails)
         self._testIsClean(a_signal)
 

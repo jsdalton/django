@@ -174,7 +174,7 @@ class Signal(object):
             responses.append((receiver, response))
         return responses
 
-    def send_robust(self, sender, append_traceback=False, **named):
+    def send_robust(self, sender, exc_info=False, **named):
         """
         Send signal from sender to all connected receivers catching errors.
 
@@ -185,9 +185,10 @@ class Signal(object):
                 registered with a connect if you actually want something to
                 occur).
 
-            append_traceback
-                If an exception occurs in a receiver, append a traceback object
-                to the tuple result for that receiver.
+            exc_info
+                If an exception occurs in a receiver, return a triple (type,
+                exception, traceback) as the response instead of just an exception
+                instance.
 
             named
                 Named arguments which will be passed to receivers. These
@@ -199,8 +200,9 @@ class Signal(object):
 
         If any receiver raises an error (specifically any subclass of
         Exception), the error instance is returned as the result for that
-        receiver. If append_traceback is True, a traceback object will
-        also be included in the result, i.e. (receiver, error, traceback).
+        receiver. If exc_info is True, a triple that includes the exception type,
+        the exception instance, and a traceback (type, exception, traceback) will
+        be returned instead of just the error instance.
         """
         responses = []
         if not self.receivers:
@@ -212,14 +214,8 @@ class Signal(object):
             try:
                 response = receiver(signal=self, sender=sender, **named)
             except Exception, err:
-                if append_traceback:
-                    # Wrap traceback in try...finally to prevent circular reference
-                    # See warning at http://docs.python.org/library/sys.html#sys.exc_info
-                    try:
-                        traceback = sys.exc_info()[2]
-                        responses.append((receiver, err, traceback))
-                    finally:
-                        del traceback
+                if exc_info:
+                    responses.append((receiver, sys.exc_info()))
                 else:
                     responses.append((receiver, err))
             else:
