@@ -55,10 +55,14 @@ class BaseFormSet(StrAndUnicode):
 
     def __getitem__(self, index):
         """Returns the form at the given index, based on the rendering order"""
-        return list(self)[index]
+        return self.forms[index]
 
     def __len__(self):
         return len(self.forms)
+
+    def __nonzero__(self):
+        """All formsets have a management form which is not included in the length"""
+        return True
 
     def _management_form(self):
         """Returns the ManagementForm instance for this FormSet."""
@@ -213,7 +217,7 @@ class BaseFormSet(StrAndUnicode):
                     return (1, 0) # +infinity, larger than any number
                 return (0, k[1])
             self._ordering.sort(key=compare_ordering_key)
-        # Return a list of form.cleaned_data dicts in the order spcified by
+        # Return a list of form.cleaned_data dicts in the order specified by
         # the form data.
         return [self.forms[i[0]] for i in self._ordering]
     ordered_forms = property(_get_ordered_forms)
@@ -295,6 +299,12 @@ class BaseFormSet(StrAndUnicode):
         via formset.non_form_errors()
         """
         pass
+
+    def has_changed(self):
+        """
+        Returns true if data in any form differs from initial.
+        """
+        return any(form.has_changed() for form in self)
 
     def add_fields(self, form, index):
         """A hook for adding extra fields on to each form instance."""

@@ -3,11 +3,9 @@ Query subclasses which provide extra functionality beyond simple data retrieval.
 """
 
 from django.core.exceptions import FieldError
-from django.db import connections
 from django.db.models.fields import DateField, FieldDoesNotExist
 from django.db.models.sql.constants import *
 from django.db.models.sql.datastructures import Date
-from django.db.models.sql.expressions import SQLEvaluator
 from django.db.models.sql.query import Query
 from django.db.models.sql.where import AND, Constraint
 
@@ -138,20 +136,19 @@ class InsertQuery(Query):
 
     def __init__(self, *args, **kwargs):
         super(InsertQuery, self).__init__(*args, **kwargs)
-        self.columns = []
-        self.values = []
-        self.params = ()
+        self.fields = []
+        self.objs = []
 
     def clone(self, klass=None, **kwargs):
         extras = {
-            'columns': self.columns[:],
-            'values': self.values[:],
-            'params': self.params
+            'fields': self.fields[:],
+            'objs': self.objs[:],
+            'raw': self.raw,
         }
         extras.update(kwargs)
         return super(InsertQuery, self).clone(klass, **extras)
 
-    def insert_values(self, insert_values, raw_values=False):
+    def insert_values(self, fields, objs, raw=False):
         """
         Set up the insert query from the 'insert_values' dictionary. The
         dictionary gives the model field names and their target values.
@@ -161,16 +158,9 @@ class InsertQuery(Query):
         parameters. This provides a way to insert NULL and DEFAULT keywords
         into the query, for example.
         """
-        placeholders, values = [], []
-        for field, val in insert_values:
-            placeholders.append((field, val))
-            self.columns.append(field.column)
-            values.append(val)
-        if raw_values:
-            self.values.extend([(None, v) for v in values])
-        else:
-            self.params += tuple(values)
-            self.values.extend(placeholders)
+        self.fields = fields
+        self.objs = objs
+        self.raw = raw
 
 class DateQuery(Query):
     """

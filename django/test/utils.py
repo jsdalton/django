@@ -1,12 +1,8 @@
 from __future__ import with_statement
 
-import sys
-import time
-import os
 import warnings
 from django.conf import settings, UserSettingsHolder
 from django.core import mail
-from django.core.mail.backends import locmem
 from django.test.signals import template_rendered, setting_changed
 from django.template import Template, loader, TemplateDoesNotExist
 from django.template.loaders import cached
@@ -177,7 +173,7 @@ class OverrideSettingsHolder(UserSettingsHolder):
     """
     def __setattr__(self, name, value):
         UserSettingsHolder.__setattr__(self, name, value)
-        setting_changed.send(sender=name, setting=name, value=value)
+        setting_changed.send(sender=self.__class__, setting=name, value=value)
 
 
 class override_settings(object):
@@ -198,15 +194,25 @@ class override_settings(object):
         self.disable()
 
     def __call__(self, test_func):
-        from django.test import TestCase
-        if isinstance(test_func, type) and issubclass(test_func, TestCase):
-            class inner(test_func):
-                def _pre_setup(innerself):
-                    self.enable()
-                    super(inner, innerself)._pre_setup()
-                def _post_teardown(innerself):
-                    super(inner, innerself)._post_teardown()
-                    self.disable()
+        from django.test import TransactionTestCase
+        if isinstance(test_func, type) and issubclass(test_func, TransactionTestCase):
+            # When decorating a class, we need to construct a new class
+            # with the same name so that the test discovery tools can
+            # get a useful name.
+            def _pre_setup(innerself):
+                self.enable()
+                test_func._pre_setup(innerself)
+            def _post_teardown(innerself):
+                test_func._post_teardown(innerself)
+                self.disable()
+            inner = type(
+                test_func.__name__,
+                (test_func,),
+                {
+                    '_pre_setup': _pre_setup,
+                    '_post_teardown': _post_teardown,
+                    '__module__': test_func.__module__,
+                })
         else:
             @wraps(test_func)
             def inner(*args, **kwargs):

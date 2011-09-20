@@ -142,6 +142,18 @@ currently the only engine that supports full-text indexing and searching.
 The InnoDB_ engine is fully transactional and supports foreign key references
 and is probably the best choice at this point in time.
 
+.. versionchanged:: 1.4
+
+In previous versions of Django, fixtures with forward references (i.e.
+relations to rows that have not yet been inserted into the database) would fail
+to load when using the InnoDB storage engine. This was due to the fact that InnoDB
+deviates from the SQL standard by checking foreign key constraints immediately
+instead of deferring the check until the transaction is committed. This
+problem has been resolved in Django 1.4. Fixture data is now loaded with foreign key
+checks turned off; foreign key checks are then re-enabled when the data has
+finished loading, at which point the entire table is checked for invalid foreign
+key references and an `IntegrityError` is raised if any are found.
+
 .. _storage engines: http://dev.mysql.com/doc/refman/5.5/en/storage-engines.html
 .. _MyISAM: http://dev.mysql.com/doc/refman/5.5/en/myisam-storage-engine.html
 .. _InnoDB: http://dev.mysql.com/doc/refman/5.5/en/innodb.html
@@ -314,6 +326,19 @@ storage engine, you have a couple of options.
 
 .. _AlterModelOnSyncDB: http://code.djangoproject.com/wiki/AlterModelOnSyncDB
 
+Table names
+-----------
+
+There are `known issues`_ in even the latest versions of MySQL that can cause the
+case of a table name to be altered when certain SQL statements are executed
+under certain conditions. It is recommended that you use lowercase table
+names, if possible, to avoid any problems that might arise from this behavior.
+Django uses lowercase table names when it auto-generates table names from
+models, so this is mainly a consideration if you are overriding the table name
+via the :class:`~django.db.models.Options.db_table` parameter.
+
+.. _known issues: http://bugs.mysql.com/bug.php?id=48875
+
 Notes on specific fields
 ------------------------
 
@@ -368,14 +393,27 @@ specific to SQLite that you should be aware of.
 
 .. _sqlite-string-matching:
 
-String matching for non-ASCII strings
---------------------------------------
+Substring matching and case sensitivity
+-----------------------------------------
 
-SQLite doesn't support case-insensitive matching for non-ASCII strings. Some
-possible workarounds for this are `documented at sqlite.org`_, but they are
-not utilised by the default SQLite backend in Django. Therefore, if you are
-using the ``iexact`` lookup type in your queryset filters, be aware that it
-will not work as expected for non-ASCII strings.
+For all SQLite versions, there is some slightly counter-intuitive behavior when
+attempting to match some types of strings.  These are triggered when using the
+:lookup:`iexact` or :lookup:`contains` filters in Querysets. The behavior
+splits into two cases:
+
+1. For substring matching, all matches are done case-insensitively. That is a
+filter such as ``filter(name__contains="aa")`` will match a name of ``"Aabb"``.
+
+2. For strings containing characters outside the ASCII range, all exact string
+matches are performed case-sensitively, even when the case-insensitive options
+are passed into the query. So the :lookup:`iexact` filter will behave exactly
+the same as the :lookup:`exact` filter in these cases.
+
+Some possible workarounds for this are `documented at sqlite.org`_, but they
+aren't utilised by the default SQLite backend in Django, as incorporating them
+would be fairly difficult to do robustly. Thus, Django exposes the default
+SQLite behavior and you should be aware of this when doing case-insensitive or
+substring filtering.
 
 .. _documented at sqlite.org: http://www.sqlite.org/faq.html#q18
 
@@ -707,6 +745,7 @@ by 3rd parties that allow you to use other databases with Django:
 * `Microsoft SQL Server 2005`_
 * Firebird_
 * ODBC_
+* ADSDB_
 
 The Django versions and ORM features supported by these unofficial backends
 vary considerably. Queries regarding the specific capabilities of these
@@ -718,3 +757,4 @@ the support channels provided by each 3rd party project.
 .. _Microsoft SQL Server 2005: http://code.google.com/p/django-mssql/
 .. _Firebird: http://code.google.com/p/django-firebird/
 .. _ODBC: http://code.google.com/p/django-pyodbc/
+.. _ADSDB: http://code.google.com/p/adsdb-django/

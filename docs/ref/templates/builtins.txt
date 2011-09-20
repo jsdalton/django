@@ -529,7 +529,7 @@ operators, from lowest to highest, is as follows:
  * ``and``
  * ``not``
  * ``in``
- * ``==``, ``!=``, ``<``, ``>``,``<=``, ``>=``
+ * ``==``, ``!=``, ``<``, ``>``, ``<=``, ``>=``
 
 (This follows Python exactly). So, for example, the following complex if tag:
 
@@ -1254,7 +1254,8 @@ Available format strings:
     c                 ISO 8601 format. (Note: unlike others     ``2008-01-02T10:30:00.000123+02:00``,
                       formatters, such as "Z", "O" or "r",      or ``2008-01-02T10:30:00.000123`` if the datetime is naive
                       the "c" formatter will not add timezone
-                      offset if value is a `naive datetime`_.)
+                      offset if value is a naive datetime
+                      (see :class:`datetime.tzinfo`).
     d                 Day of the month, 2 digits with           ``'01'`` to ``'31'``
                       leading zeros.
     D                 Day of the week, textual, 3 letters.      ``'Fri'``
@@ -1288,7 +1289,7 @@ Available format strings:
                       if they're zero and the special-case
                       strings 'midnight' and 'noon' if
                       appropriate. Proprietary extension.
-    r                 RFC 2822 formatted date.                  ``'Thu, 21 Dec 2000 16:01:07 +0200'``
+    r                 :rfc:`2822` formatted date.               ``'Thu, 21 Dec 2000 16:01:07 +0200'``
     s                 Seconds, 2 digits with leading zeros.     ``'00'`` to ``'59'``
     S                 English ordinal suffix for day of the     ``'st'``, ``'nd'``, ``'rd'`` or ``'th'``
                       month, 2 characters.
@@ -1345,8 +1346,6 @@ used, without applying any localization.
 
 .. versionchanged:: 1.2
     Predefined formats can now be influenced by the current locale.
-
-.. _naive datetime: http://docs.python.org/library/datetime.html#datetime.tzinfo
 
 .. templatefilter:: default
 
@@ -1815,9 +1814,7 @@ Example::
 pprint
 ^^^^^^
 
-A wrapper around `pprint.pprint`__ -- for debugging, really.
-
-__ http://docs.python.org/library/pprint.html
+A wrapper around :func:`pprint.pprint` -- for debugging, really.
 
 .. templatefilter:: random
 
@@ -2054,6 +2051,24 @@ For example::
     {{ value|title }}
 
 If ``value`` is ``"my first post"``, the output will be ``"My First Post"``.
+
+.. templatefilter:: truncatechars
+
+truncatechars
+^^^^^^^^^^^^^
+
+.. versionadded:: 1.4
+
+Truncates a string if it is longer than the specified number of characters.
+Truncated strings will end with a translatable ellipsis sequence ("...").
+
+**Argument:** Number of characters to truncate to
+
+For example::
+
+    {{ value|truncatechars:9 }}
+
+If ``value`` is ``"Joel is a slug"``, the output will be ``"Joel i..."``.
 
 .. templatefilter:: truncatewords
 
@@ -2335,9 +2350,9 @@ static
 
 .. highlight:: html+django
 
-To link to static files Django ships with a :ttag:`static` template tag. You
-can use this regardless if you're using :class:`~django.template.RequestContext`
-or not.
+To link to static files that are saved in :setting:`STATIC_ROOT` Django ships
+with a :ttag:`static` template tag. You can use this regardless if you're
+using :class:`~django.template.RequestContext` or not.
 
 .. code-block:: html+django
 
@@ -2351,6 +2366,17 @@ It is also able to consume standard context variables, e.g. assuming a
 
     {% load static %}
     <link rel="stylesheet" href="{% static user_stylesheet %}" type="text/css" media="screen" />
+
+.. note::
+
+    The :mod:`staticfiles<django.contrib.staticfiles>` contrib app also ships
+    with a :ttag:`static template tag<staticfiles-static>` which uses
+    ``staticfiles'`` :setting:`STATICFILES_STORAGE` to build the URL of the
+    given path. Use that instead if you have an advanced use case such as
+    :ref:`using a cloud service to serve static files<staticfiles-from-cdn>`::
+
+        {% load static from staticfiles %}
+        <img src="{% static "images/hi.jpg" %}" />
 
 .. templatetag:: get_static_prefix
 

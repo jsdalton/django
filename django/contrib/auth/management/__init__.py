@@ -46,17 +46,15 @@ def create_permissions(app, created_models, verbosity, **kwargs):
         "content_type", "codename"
     ))
 
-    for ctype, (codename, name) in searched_perms:
-        # If the permissions exists, move on.
-        if (ctype.pk, codename) in all_perms:
-            continue
-        p = auth_app.Permission.objects.create(
-            codename=codename,
-            name=name,
-            content_type=ctype
-        )
-        if verbosity >= 2:
-            print "Adding permission '%s'" % p
+    objs = [
+        auth_app.Permission(codename=codename, name=name, content_type=ctype)
+        for ctype, (codename, name) in searched_perms
+        if (ctype.pk, codename) not in all_perms
+    ]
+    auth_app.Permission.objects.bulk_create(objs)
+    if verbosity >= 2:
+        for obj in objs:
+            print "Adding permission '%s'" % obj
 
 
 def create_superuser(app, created_models, verbosity, **kwargs):
@@ -102,8 +100,8 @@ def get_default_username(check_db=True):
     :returns: The username, or an empty string if no username can be
         determined.
     """
-    from django.contrib.auth.management.commands.createsuperuser import \
-        RE_VALID_USERNAME
+    from django.contrib.auth.management.commands.createsuperuser import (
+        RE_VALID_USERNAME)
     default_username = get_system_username()
     try:
         default_username = unicodedata.normalize('NFKD', default_username)\

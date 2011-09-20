@@ -14,12 +14,12 @@ who visits the malicious site in their browser.  A related type of attack,
 a site with someone else's credentials, is also covered.
 
 The first defense against CSRF attacks is to ensure that GET requests (and other
-'safe' methods, as defined by `9.1.1 Safe Methods, HTTP 1.1, RFC 2616`_) are
-side-effect free.  Requests via 'unsafe' methods, such as POST, PUT and DELETE,
-can then be protected by following the steps below.
+'safe' methods, as defined by 9.1.1 Safe Methods, HTTP 1.1,
+:rfc:`2616#section-9.1.1`) are side-effect free. Requests via 'unsafe' methods,
+such as POST, PUT and DELETE, can then be protected by following the steps
+below.
 
 .. _Cross Site Request Forgeries: http://www.squarefree.com/securitytips/web-developers.html#CSRF
-.. _9.1.1 Safe Methods, HTTP 1.1, RFC 2616: http://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
 
 .. _using-csrf:
 
@@ -31,7 +31,7 @@ To enable CSRF protection for your views, follow these steps:
     1. Add the middleware
        ``'django.middleware.csrf.CsrfViewMiddleware'`` to your list of
        middleware classes, :setting:`MIDDLEWARE_CLASSES`.  (It should come
-       and before any view middleware that assume that CSRF attacks have
+       before any view middleware that assume that CSRF attacks have
        been dealt with.)
 
        Alternatively, you can use the decorator
@@ -128,6 +128,11 @@ that allow headers to be set on every request. In jQuery, you can use the
         }
     });
 
+.. note::
+
+    Due to a bug introduced in jQuery 1.5, the example above will not work
+    correctly on that version. Make sure you are running at least jQuery 1.5.1.
+
 Adding this to a javascript file that is included on your site will ensure that
 AJAX POST requests that are made via jQuery will not be caught by the CSRF
 protection.
@@ -223,9 +228,9 @@ This ensures that only forms that have originated from your Web site can be used
 to POST data back.
 
 It deliberately ignores GET requests (and other requests that are defined as
-'safe' by RFC 2616). These requests ought never to have any potentially
+'safe' by :rfc:`2616`). These requests ought never to have any potentially
 dangerous side effects , and so a CSRF attack with a GET request ought to be
-harmless. RFC 2616 defines POST, PUT and DELETE as 'unsafe', and all other
+harmless. :rfc:`2616` defines POST, PUT and DELETE as 'unsafe', and all other
 methods are assumed to be unsafe, for maximum protection.
 
 Caching
@@ -412,7 +417,7 @@ CSRF_COOKIE_DOMAIN
 Default: ``None``
 
 The domain to be used when setting the CSRF cookie.  This can be useful for
-easily allowing cross-subdomain requests to be exluded from the normal cross
+easily allowing cross-subdomain requests to be excluded from the normal cross
 site request forgery protection.  It should be set to a string such as
 ``".lawrence.com"`` to allow a POST request from a form on one subdomain to be
 accepted by accepted by a view served from another subdomain.

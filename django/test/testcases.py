@@ -6,13 +6,16 @@ from functools import wraps
 from urlparse import urlsplit, urlunsplit
 from xml.dom.minidom import parseString, Node
 
-from django.conf import settings, UserSettingsHolder
+from django.conf import settings
 from django.core import mail
+from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.core.signals import request_started
 from django.core.urlresolvers import clear_url_caches
+from django.core.validators import EMPTY_VALUES
 from django.db import (transaction, connection, connections, DEFAULT_DB_ALIAS,
     reset_queries)
+from django.forms.fields import CharField
 from django.http import QueryDict
 from django.test import _doctest as doctest
 from django.test.client import Client
@@ -21,7 +24,7 @@ from django.utils import simplejson, unittest as ut2
 from django.utils.encoding import smart_str
 
 __all__ = ('DocTestRunner', 'OutputChecker', 'TestCase', 'TransactionTestCase',
-           'skipIfDBFeature', 'skipUnlessDBFeature')
+           'SimpleTestCase', 'skipIfDBFeature', 'skipUnlessDBFeature')
 
 normalize_long_ints = lambda s: re.sub(r'(?<![\w])(\d+)L(?![\w])', '\\1', s)
 normalize_decimals = lambda s: re.sub(r"Decimal\('(\d+(\.\d*)?)'\)", lambda m: "Decimal(\"%s\")" % m.groups()[0], s)
@@ -235,8 +238,90 @@ class _AssertNumQueriesContext(object):
             )
         )
 
+class SimpleTestCase(ut2.TestCase):
 
-class TransactionTestCase(ut2.TestCase):
+    def save_warnings_state(self):
+        """
+        Saves the state of the warnings module
+        """
+        self._warnings_state = get_warnings_state()
+
+    def restore_warnings_state(self):
+        """
+        Restores the sate of the warnings module to the state
+        saved by save_warnings_state()
+        """
+        restore_warnings_state(self._warnings_state)
+
+    def settings(self, **kwargs):
+        """
+        A context manager that temporarily sets a setting and reverts
+        back to the original value when exiting the context.
+        """
+        return override_settings(**kwargs)
+
+    def assertRaisesMessage(self, expected_exception, expected_message,
+                           callable_obj=None, *args, **kwargs):
+        """Asserts that the message in a raised exception matches the passe value.
+
+        Args:
+            expected_exception: Exception class expected to be raised.
+            expected_message: expected error message string value.
+            callable_obj: Function to be called.
+            args: Extra args.
+            kwargs: Extra kwargs.
+        """
+        return self.assertRaisesRegexp(expected_exception,
+                re.escape(expected_message), callable_obj, *args, **kwargs)
+
+    def assertFieldOutput(self, fieldclass, valid, invalid, field_args=None,
+            field_kwargs=None, empty_value=u''):
+        """
+        Asserts that a form field behaves correctly with various inputs.
+
+        Args:
+            fieldclass: the class of the field to be tested.
+            valid: a dictionary mapping valid inputs to their expected
+                    cleaned values.
+            invalid: a dictionary mapping invalid inputs to one or more
+                    raised error messages.
+            field_args: the args passed to instantiate the field
+            field_kwargs: the kwargs passed to instantiate the field
+            empty_value: the expected clean output for inputs in EMPTY_VALUES
+
+        """
+        if field_args is None:
+            field_args = []
+        if field_kwargs is None:
+            field_kwargs = {}
+        required = fieldclass(*field_args, **field_kwargs)
+        optional = fieldclass(*field_args, **dict(field_kwargs, required=False))
+        # test valid inputs
+        for input, output in valid.items():
+            self.assertEqual(required.clean(input), output)
+            self.assertEqual(optional.clean(input), output)
+        # test invalid inputs
+        for input, errors in invalid.items():
+            with self.assertRaises(ValidationError) as context_manager:
+                required.clean(input)
+            self.assertEqual(context_manager.exception.messages, errors)
+
+            with self.assertRaises(ValidationError) as context_manager:
+                optional.clean(input)
+            self.assertEqual(context_manager.exception.messages, errors)
+        # test required inputs
+        error_required = [u'This field is required.']
+        for e in EMPTY_VALUES:
+            with self.assertRaises(ValidationError) as context_manager:
+                required.clean(e)
+            self.assertEqual(context_manager.exception.messages, error_required)
+            self.assertEqual(optional.clean(e), empty_value)
+        # test that max_length and min_length are always accepted
+        if issubclass(fieldclass, CharField):
+            field_kwargs.update({'min_length':2, 'max_length':20})
+            self.assertTrue(isinstance(fieldclass(*field_args, **field_kwargs), fieldclass))
+
+class TransactionTestCase(SimpleTestCase):
     # The class we'll use for the test client self.client.
     # Can be overridden in derived classes.
     client_class = Client
@@ -283,28 +368,27 @@ class TransactionTestCase(ut2.TestCase):
         include a call to super().setUp().
         """
         testMethod = getattr(self, self._testMethodName)
-        if (getattr(self.__class__, "__unittest_skip__", False) or
-            getattr(testMethod, "__unittest_skip__", False)):
-            return
+        skipped = (getattr(self.__class__, "__unittest_skip__", False) or
+            getattr(testMethod, "__unittest_skip__", False))
 
-        self.client = self.client_class()
-        try:
-            self._pre_setup()
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        except Exception:
-            import sys
-            result.addError(self, sys.exc_info())
-            return
+        if not skipped:
+            self.client = self.client_class()
+            try:
+                self._pre_setup()
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except Exception:
+                result.addError(self, sys.exc_info())
+                return
         super(TransactionTestCase, self).__call__(result)
-        try:
-            self._post_teardown()
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        except Exception:
-            import sys
-            result.addError(self, sys.exc_info())
-            return
+        if not skipped:
+            try:
+                self._post_teardown()
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except Exception:
+                result.addError(self, sys.exc_info())
+                return
 
     def _post_teardown(self):
         """ Performs any post-test things. This includes:
@@ -322,8 +406,8 @@ class TransactionTestCase(ut2.TestCase):
         # be created with the wrong time).
         # To make sure this doesn't happen, get a clean connection at the
         # start of every test.
-        for connection in connections.all():
-            connection.close()
+        for conn in connections.all():
+            conn.close()
 
     def _fixture_teardown(self):
         pass
@@ -332,26 +416,6 @@ class TransactionTestCase(ut2.TestCase):
         if hasattr(self, '_old_root_urlconf'):
             settings.ROOT_URLCONF = self._old_root_urlconf
             clear_url_caches()
-
-    def save_warnings_state(self):
-        """
-        Saves the state of the warnings module
-        """
-        self._warnings_state = get_warnings_state()
-
-    def restore_warnings_state(self):
-        """
-        Restores the sate of the warnings module to the state
-        saved by save_warnings_state()
-        """
-        restore_warnings_state(self._warnings_state)
-
-    def settings(self, **kwargs):
-        """
-        A context manager that temporarily sets a setting and reverts
-        back to the original value when exiting the context.
-        """
-        return override_settings(**kwargs)
 
     def assertRedirects(self, response, expected_url, status_code=302,
                         target_status_code=200, host=None, msg_prefix=''):
@@ -533,18 +597,19 @@ class TransactionTestCase(ut2.TestCase):
             msg_prefix + "Template '%s' was used unexpectedly in rendering"
             " the response" % template_name)
 
-    def assertQuerysetEqual(self, qs, values, transform=repr):
+    def assertQuerysetEqual(self, qs, values, transform=repr, ordered=True):
+        if not ordered:
+            return self.assertEqual(set(map(transform, qs)), set(values))
         return self.assertEqual(map(transform, qs), values)
 
     def assertNumQueries(self, num, func=None, *args, **kwargs):
         using = kwargs.pop("using", DEFAULT_DB_ALIAS)
-        connection = connections[using]
+        conn = connections[using]
 
-        context = _AssertNumQueriesContext(self, num, connection)
+        context = _AssertNumQueriesContext(self, num, conn)
         if func is None:
             return context
 
-        # Basically emulate the `with` statement here.
         with context:
             func(*args, **kwargs)
 

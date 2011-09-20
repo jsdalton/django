@@ -3,13 +3,12 @@ import os
 import re
 import sys
 import types
-from pprint import pformat
 
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.http import (HttpResponse, HttpResponseServerError,
     HttpResponseNotFound, HttpRequest, build_request_repr)
-from django.template import (Template, Context, TemplateDoesNotExist,
-    TemplateSyntaxError)
+from django.template import Template, Context, TemplateDoesNotExist
 from django.template.defaultfilters import force_escape, pprint
 from django.utils.html import escape
 from django.utils.importlib import import_module
@@ -80,7 +79,7 @@ def get_exception_reporter_filter(request):
         try:
             default_exception_reporter_filter = getattr(mod, classname)()
         except AttributeError:
-            raise exceptions.ImproperlyConfigured('Default exception reporter filter module "%s" does not define a "%s" class' % (modname, classname))
+            raise ImproperlyConfigured('Default exception reporter filter module "%s" does not define a "%s" class' % (modname, classname))
     if request:
         return getattr(request, 'exception_reporter_filter', default_exception_reporter_filter)
     else:
@@ -141,7 +140,7 @@ class SafeExceptionReporterFilter(ExceptionReporterFilter):
                 else:
                     # Cleanse only the specified parameters.
                     for param in sensitive_post_parameters:
-                        if cleansed.has_key(param):
+                        if param in cleansed:
                             cleansed[param] = CLEANSED_SUBSTITUTE
                     return cleansed
             else:
@@ -223,8 +222,8 @@ class ExceptionReporter(object):
                     'loader': loader_name,
                     'templates': template_list,
                 })
-        if (settings.TEMPLATE_DEBUG and hasattr(self.exc_value, 'source') and
-            isinstance(self.exc_value, TemplateSyntaxError)):
+        if (settings.TEMPLATE_DEBUG and
+            hasattr(self.exc_value, 'django_template_source')):
             self.get_template_exception_info()
 
         frames = self.get_traceback_frames()
@@ -268,7 +267,7 @@ class ExceptionReporter(object):
         return t.render(c)
 
     def get_template_exception_info(self):
-        origin, (start, end) = self.exc_value.source
+        origin, (start, end) = self.exc_value.django_template_source
         template_source = origin.reload()
         context_lines = 10
         line = 0
@@ -446,7 +445,7 @@ TECHNICAL_500_TEMPLATE = """
     h2 span { font-size:80%; color:#666; font-weight:normal; }
     h3 { margin:1em 0 .5em 0; }
     h4 { margin:0 0 .5em 0; font-weight: normal; }
-    code, pre { font-size: 100%; }
+    code, pre { font-size: 100%; white-space: pre-wrap; }
     table { border:1px solid #ccc; border-collapse: collapse; width:100%; background:white; }
     tbody td, tbody th { vertical-align:top; padding:2px 3px; }
     thead th { padding:1px 6px 1px 3px; background:#fefefe; text-align:left; font-weight:normal; font-size:11px; border:1px solid #ddd; }
@@ -626,7 +625,7 @@ TECHNICAL_500_TEMPLATE = """
 {% endif %}
 {% if template_info %}
 <div id="template">
-   <h2>Template error</h2>
+   <h2>Error during template rendering</h2>
    <p>In template <code>{{ template_info.name }}</code>, error at line <strong>{{ template_info.line }}</strong></p>
    <h3>{{ template_info.message }}</h3>
    <table class="source{% if template_info.top %} cut-top{% endif %}{% ifnotequal template_info.bottom template_info.total %} cut-bottom{% endifnotequal %}">

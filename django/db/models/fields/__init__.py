@@ -17,7 +17,7 @@ from django.utils.text import capfirst
 from django.utils.translation import ugettext_lazy as _
 from django.utils.encoding import smart_unicode, force_unicode, smart_str
 from django.utils import datetime_safe
-from django.utils.ipv6 import clean_ipv6_address, is_valid_ipv6_address
+from django.utils.ipv6 import clean_ipv6_address
 
 class NOT_PROVIDED:
     pass
@@ -220,15 +220,16 @@ class Field(object):
         except KeyError:
             return None
 
+    @property
     def unique(self):
         return self._unique or self.primary_key
-    unique = property(unique)
 
     def set_attributes_from_name(self, name):
-        self.name = name
+        if not self.name:
+            self.name = name
         self.attname, self.column = self.get_attname_column()
-        if self.verbose_name is None and name:
-            self.verbose_name = name.replace('_', ' ')
+        if self.verbose_name is None and self.name:
+            self.verbose_name = self.name.replace('_', ' ')
 
     def contribute_to_class(self, cls, name):
         self.set_attributes_from_name(name)
@@ -461,7 +462,7 @@ class AutoField(Field):
 
     empty_strings_allowed = False
     default_error_messages = {
-        'invalid': _(u'This value must be an integer.'),
+        'invalid': _(u"'%s' value must be an integer."),
     }
     def __init__(self, *args, **kwargs):
         assert kwargs.get('primary_key', False) is True, "%ss must have primary_key=True." % self.__class__.__name__
@@ -477,7 +478,8 @@ class AutoField(Field):
         try:
             return int(value)
         except (TypeError, ValueError):
-            raise exceptions.ValidationError(self.error_messages['invalid'])
+            msg = self.error_messages['invalid'] % str(value)
+            raise exceptions.ValidationError(msg)
 
     def validate(self, value, model_instance):
         pass
@@ -499,7 +501,7 @@ class AutoField(Field):
 class BooleanField(Field):
     empty_strings_allowed = False
     default_error_messages = {
-        'invalid': _(u'This value must be either True or False.'),
+        'invalid': _(u"'%s' value must be either True or False."),
     }
     description = _("Boolean (Either True or False)")
     def __init__(self, *args, **kwargs):
@@ -520,7 +522,8 @@ class BooleanField(Field):
             return True
         if value in ('f', 'False', '0'):
             return False
-        raise exceptions.ValidationError(self.error_messages['invalid'])
+        msg = self.error_messages['invalid'] % str(value)
+        raise exceptions.ValidationError(msg)
 
     def get_prep_lookup(self, lookup_type, value):
         # Special-case handling for filters coming from a Web request (e.g. the
@@ -752,7 +755,7 @@ class DateTimeField(DateField):
 class DecimalField(Field):
     empty_strings_allowed = False
     default_error_messages = {
-        'invalid': _(u'This value must be a decimal number.'),
+        'invalid': _(u"'%s' value must be a decimal number."),
     }
     description = _("Decimal number")
 
@@ -769,7 +772,8 @@ class DecimalField(Field):
         try:
             return decimal.Decimal(value)
         except decimal.InvalidOperation:
-            raise exceptions.ValidationError(self.error_messages['invalid'])
+            msg = self.error_messages['invalid'] % str(value)
+            raise exceptions.ValidationError(msg)
 
     def _format(self, value):
         if isinstance(value, basestring) or value is None:
@@ -847,7 +851,7 @@ class FilePathField(Field):
 class FloatField(Field):
     empty_strings_allowed = False
     default_error_messages = {
-        'invalid': _("This value must be a float."),
+        'invalid': _("'%s' value must be a float."),
     }
     description = _("Floating point number")
 
@@ -865,7 +869,8 @@ class FloatField(Field):
         try:
             return float(value)
         except (TypeError, ValueError):
-            raise exceptions.ValidationError(self.error_messages['invalid'])
+            msg = self.error_messages['invalid'] % str(value)
+            raise exceptions.ValidationError(msg)
 
     def formfield(self, **kwargs):
         defaults = {'form_class': forms.FloatField}
@@ -875,7 +880,7 @@ class FloatField(Field):
 class IntegerField(Field):
     empty_strings_allowed = False
     default_error_messages = {
-        'invalid': _("This value must be an integer."),
+        'invalid': _("'%s' value must be an integer."),
     }
     description = _("Integer")
 
@@ -899,7 +904,8 @@ class IntegerField(Field):
         try:
             return int(value)
         except (TypeError, ValueError):
-            raise exceptions.ValidationError(self.error_messages['invalid'])
+            msg = self.error_messages['invalid'] % str(value)
+            raise exceptions.ValidationError(msg)
 
     def formfield(self, **kwargs):
         defaults = {'form_class': forms.IntegerField}
@@ -967,7 +973,7 @@ class GenericIPAddressField(Field):
         if value and ':' in value:
             try:
                 return clean_ipv6_address(value, self.unpack_ipv4)
-            except ValidationError:
+            except exceptions.ValidationError:
                 pass
         return value
 
@@ -980,7 +986,7 @@ class GenericIPAddressField(Field):
 class NullBooleanField(Field):
     empty_strings_allowed = False
     default_error_messages = {
-        'invalid': _("This value must be either None, True or False."),
+        'invalid': _("'%s' value must be either None, True or False."),
     }
     description = _("Boolean (Either True, False or None)")
 
@@ -1003,7 +1009,8 @@ class NullBooleanField(Field):
             return True
         if value in ('f', 'False', '0'):
             return False
-        raise exceptions.ValidationError(self.error_messages['invalid'])
+        msg = self.error_messages['invalid'] % str(value)
+        raise exceptions.ValidationError(msg)
 
     def get_prep_lookup(self, lookup_type, value):
         # Special-case handling for filters coming from a Web request (e.g. the
@@ -1171,7 +1178,7 @@ class TimeField(Field):
 class URLField(CharField):
     description = _("URL")
 
-    def __init__(self, verbose_name=None, name=None, verify_exists=True, **kwargs):
+    def __init__(self, verbose_name=None, name=None, verify_exists=False, **kwargs):
         kwargs['max_length'] = kwargs.get('max_length', 200)
         CharField.__init__(self, verbose_name, name, **kwargs)
         self.validators.append(validators.URLValidator(verify_exists=verify_exists))

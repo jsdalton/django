@@ -29,12 +29,13 @@ def geo_apps(namespace=True, runtests=False):
 
     # The following GeoDjango test apps depend on GDAL support.
     if HAS_GDAL:
-        # 3D apps use LayerMapping, which uses GDAL.
+        # Geographic admin, LayerMapping, and ogrinspect test apps
+        # all require GDAL.
+        apps.extend(['geoadmin', 'layermap', 'inspectapp'])
+
+        # 3D apps use LayerMapping, which uses GDAL and require GEOS 3.1+.
         if connection.ops.postgis and GEOS_PREPARE:
             apps.append('geo3d')
-
-        apps.append('layermap')
-
     if runtests:
         return [('django.contrib.gis.tests', app) for app in apps]
     elif namespace:
@@ -75,10 +76,10 @@ def geodjango_suite(apps=True):
         sys.stderr.write('GDAL not available - no tests requiring GDAL will be run.\n')
 
     # Add GeoIP tests to the suite, if the library and data is available.
-    from django.contrib.gis.utils import HAS_GEOIP
+    from django.contrib.gis.geoip import HAS_GEOIP
     if HAS_GEOIP and hasattr(settings, 'GEOIP_PATH'):
-        from django.contrib.gis.tests import test_geoip
-        suite.addTest(test_geoip.suite())
+        from django.contrib.gis.geoip import tests as geoip_tests
+        suite.addTest(geoip_tests.suite())
 
     # Finally, adding the suites for each of the GeoDjango test apps.
     if apps:
@@ -100,15 +101,16 @@ class GeoDjangoTestSuiteRunner(DjangoTestSuiteRunner):
 
         # Constructing the new INSTALLED_APPS, and including applications
         # within the GeoDjango test namespace.
-        new_installed =  ['django.contrib.sites',
-                          'django.contrib.sitemaps',
-                          'django.contrib.gis',
-                          ]
+        new_installed =  [
+            'django.contrib.sites',
+            'django.contrib.sitemaps',
+            'django.contrib.gis',
+        ]
 
         # Calling out to `geo_apps` to get GeoDjango applications supported
         # for testing.
         new_installed.extend(geo_apps())
-        settings.INSTALLED_APPS = new_installed
+        settings.INSTALLED_APPS = list(self.old_installed) + new_installed
 
         # SITE_ID needs to be set
         settings.SITE_ID = 1

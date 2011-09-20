@@ -12,7 +12,7 @@ from django.core.files import temp as tempfile
 from django.core.urlresolvers import reverse
 # Register auth models with the admin.
 from django.contrib.auth import REDIRECT_FIELD_NAME, admin
-from django.contrib.auth.models import User, Permission, UNUSABLE_PASSWORD
+from django.contrib.auth.models import Group, User, Permission, UNUSABLE_PASSWORD
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.admin.models import LogEntry, DELETION
 from django.contrib.admin.sites import LOGIN_FORM_KEY
@@ -410,6 +410,11 @@ class AdminViewBasicTest(TestCase):
         """Ensure incorrect lookup parameters are handled gracefully."""
         response = self.client.get('/test_admin/%s/admin_views/thing/' % self.urlbit, {'notarealfield': '5'})
         self.assertRedirects(response, '/test_admin/%s/admin_views/thing/?e=1' % self.urlbit)
+
+        # Spanning relationships through an inexistant related object (Refs #16716)
+        response = self.client.get('/test_admin/%s/admin_views/thing/' % self.urlbit, {'notarealfield__whatever': '5'})
+        self.assertRedirects(response, '/test_admin/%s/admin_views/thing/?e=1' % self.urlbit)
+
         response = self.client.get('/test_admin/%s/admin_views/thing/' % self.urlbit, {'color__id__exact': 'StringNotInteger!'})
         self.assertRedirects(response, '/test_admin/%s/admin_views/thing/?e=1' % self.urlbit)
 
@@ -2911,6 +2916,44 @@ class UserAdminTest(TestCase):
         self.assertEqual(User.objects.count(), user_count + 1)
         self.assertNotEqual(new_user.password, UNUSABLE_PASSWORD)
 
+    def test_user_permission_performance(self):
+        u = User.objects.all()[0]
+
+        with self.assertNumQueries(7):
+            response = self.client.get('/test_admin/admin/auth/user/%s/' % u.pk)
+            self.assertEqual(response.status_code, 200)
+
+
+class GroupAdminTest(TestCase):
+    """
+    Tests group CRUD functionality.
+    """
+    fixtures = ['admin-views-users.xml']
+
+    def setUp(self):
+        self.client.login(username='super', password='secret')
+
+    def tearDown(self):
+        self.client.logout()
+
+    def test_save_button(self):
+        group_count = Group.objects.count()
+        response = self.client.post('/test_admin/admin/auth/group/add/', {
+            'name': 'newgroup',
+        })
+
+        new_group = Group.objects.order_by('-id')[0]
+        self.assertRedirects(response, '/test_admin/admin/auth/group/')
+        self.assertEqual(Group.objects.count(), group_count + 1)
+
+    def test_group_permission_performance(self):
+        g = Group.objects.create(name="test_group")
+
+        with self.assertNumQueries(6):  # instead of 259!
+            response = self.client.get('/test_admin/admin/auth/group/%s/' % g.pk)
+            self.assertEqual(response.status_code, 200)
+
+
 try:
     import docutils
 except ImportError:
@@ -3156,6 +3199,25 @@ class AdminCustomSaveRelatedTests(TestCase):
         }
         response = self.client.post('/test_admin/admin/admin_views/parent/%s/' % parent.id, post)
 
+        children_names = list(Child.objects.order_by('name').values_list('name', flat=True))
+
+        self.assertEqual('Josh Stone', Parent.objects.latest('id').name)
+        self.assertEqual([u'Catherine Stone', u'Paul Stone'], children_names)
+
+    def test_should_be_able_to_edit_related_objects_on_changelist_view(self):
+        parent = Parent.objects.create(name='Josh Rock')
+        paul = Child.objects.create(parent=parent, name='Paul')
+        catherine = Child.objects.create(parent=parent, name='Catherine')
+        post = {
+            'form-TOTAL_FORMS': '1',
+            'form-INITIAL_FORMS': '1',
+            'form-MAX_NUM_FORMS': '0',
+            'form-0-id': parent.id,
+            'form-0-name': 'Josh Stone',
+            '_save': 'Save'
+        }
+
+        response = self.client.post('/test_admin/admin/admin_views/parent/', post)
         children_names = list(Child.objects.order_by('name').values_list('name', flat=True))
 
         self.assertEqual('Josh Stone', Parent.objects.latest('id').name)

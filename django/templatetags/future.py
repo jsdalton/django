@@ -1,8 +1,5 @@
-from django.conf import settings
-from django.template import Library, Node, Template, TemplateSyntaxError
-from django.template.defaulttags import kwarg_re, include_is_allowed, SsiNode, URLNode
-from django.utils.encoding import smart_str
-
+from django.template import Library, TemplateSyntaxError
+from django.template.defaulttags import kwarg_re, SsiNode, URLNode
 
 register = Library()
 
@@ -22,7 +19,7 @@ def ssi(parser, token):
 
         {% ssi "/home/html/ljworld.com/includes/right_generic.html" parsed %}
     """
-    bits = token.contents.split()
+    bits = token.split_contents()
     parsed = False
     if len(bits) not in (2, 3):
         raise TemplateSyntaxError("'ssi' tag takes one argument: the path to"

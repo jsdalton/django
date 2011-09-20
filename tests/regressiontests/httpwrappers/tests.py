@@ -216,13 +216,13 @@ class HttpResponseTests(unittest.TestCase):
         r['value'] = u'test value'
         self.assertTrue(isinstance(r['value'], str))
 
-        # An error is raised ~hen a unicode object with non-ascii is assigned.
+        # An error is raised when a unicode object with non-ascii is assigned.
         self.assertRaises(UnicodeEncodeError, r.__setitem__, 'value', u't\xebst value')
 
         # An error is raised when  a unicode object with non-ASCII format is
         # passed as initial mimetype or content_type.
         self.assertRaises(UnicodeEncodeError, HttpResponse,
-                mimetype=u't\xebst value')
+                content_type=u't\xebst value')
 
         # HttpResponse headers must be convertible to ASCII.
         self.assertRaises(UnicodeEncodeError, HttpResponse,
@@ -249,6 +249,51 @@ class HttpResponseTests(unittest.TestCase):
         """
         r = HttpResponse()
         self.assertEqual(r.get('test'), None)
+
+    def test_non_string_content(self):
+        #Bug 16494: HttpResponse should behave consistently with non-strings
+        r = HttpResponse(12345)
+        self.assertEqual(r.content, '12345')
+
+        #test content via property
+        r = HttpResponse()
+        r.content = 12345
+        self.assertEqual(r.content, '12345')
+
+    def test_iter_content(self):
+        r = HttpResponse(['abc', 'def', 'ghi'])
+        self.assertEqual(r.content, 'abcdefghi')
+
+        #test iter content via property
+        r = HttpResponse()
+        r.content = ['idan', 'alex', 'jacob']
+        self.assertEqual(r.content, 'idanalexjacob')
+
+        r = HttpResponse()
+        r.content = [1, 2, 3]
+        self.assertEqual(r.content, '123')
+
+        #test retrieval explicitly using iter and odd inputs
+        r = HttpResponse()
+        r.content = ['1', u'2', 3, unichr(1950)]
+        result = []
+        my_iter = r.__iter__()
+        while True:
+            try:
+                result.append(my_iter.next())
+            except StopIteration:
+                break
+        #'\xde\x9e' == unichr(1950).encode('utf-8')
+        self.assertEqual(result, ['1', '2', '3', '\xde\x9e'])
+        self.assertEqual(r.content, '123\xde\x9e')
+
+        #with Content-Encoding header
+        r = HttpResponse([1,1,2,4,8])
+        r['Content-Encoding'] = 'winning'
+        self.assertEqual(r.content, '11248')
+        r.content = [unichr(1950),]
+        self.assertRaises(UnicodeEncodeError,
+                          getattr, r, 'content')
 
 class CookieTests(unittest.TestCase):
     def test_encode(self):
@@ -291,3 +336,13 @@ class CookieTests(unittest.TestCase):
         Test that a repeated non-standard name doesn't affect all cookies. Ticket #15852
         """
         self.assertTrue('good_cookie' in parse_cookie('a,=b; a,=c; good_cookie=yes').keys())
+
+    def test_httponly_after_load(self):
+        """
+        Test that we can use httponly attribute on cookies that we load
+        """
+        c = SimpleCookie()
+        c.load("name=val")
+        c['name']['httponly'] = True
+        self.assertTrue(c['name']['httponly'])
+

@@ -2,7 +2,6 @@ import base64
 import hashlib
 import os
 import random
-import sys
 import time
 from datetime import datetime, timedelta
 try:
@@ -114,7 +113,7 @@ class SessionBase(object):
         self.modified = True
 
     def has_key(self, key):
-        return self._session.has_key(key)
+        return key in self._session
 
     def values(self):
         return self._session.values()

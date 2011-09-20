@@ -6,10 +6,11 @@ import sys
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, RequestFactory
+from django.test.utils import (setup_test_template_loader,
+                               restore_template_loaders)
 from django.core.urlresolvers import reverse
 from django.template import TemplateSyntaxError
 from django.views.debug import ExceptionReporter
-from django.core.exceptions import ImproperlyConfigured
 from django.core import mail
 
 from regressiontests.views import BrokenException, except_args
@@ -41,6 +42,26 @@ class DebugViewTests(TestCase):
         self.assertTrue('file_data.txt' in response.content)
         self.assertFalse('haha' in response.content)
 
+    def test_403(self):
+        # Ensure no 403.html template exists to test the default case.
+        setup_test_template_loader({})
+        try:
+            response = self.client.get('/views/raises403/')
+            self.assertContains(response, '<h1>403 Forbidden</h1>', status_code=403)
+        finally:
+            restore_template_loaders()
+
+    def test_403_template(self):
+        # Set up a test 403.html template.
+        setup_test_template_loader(
+            {'403.html': 'This is a test template for a 403 Forbidden error.'}
+        )
+        try:
+            response = self.client.get('/views/raises403/')
+            self.assertContains(response, 'test template', status_code=403)
+        finally:
+            restore_template_loaders()
+
     def test_404(self):
         response = self.client.get('/views/raises404/')
         self.assertEqual(response.status_code, 404)
@@ -54,7 +75,7 @@ class DebugViewTests(TestCase):
         for n in range(len(except_args)):
             try:
                 self.client.get(reverse('template_exception', args=(n,)))
-            except TemplateSyntaxError, e:
+            except Exception:
                 raising_loc = inspect.trace()[-1][-2][0].strip()
                 self.assertFalse(raising_loc.find('raise BrokenException') == -1,
                     "Failed to find 'raise BrokenException' in last frame of traceback, instead found: %s" %

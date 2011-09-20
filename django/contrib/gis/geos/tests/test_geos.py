@@ -1,4 +1,6 @@
-import ctypes, random, unittest, sys
+import ctypes
+import random
+import unittest
 from django.contrib.gis.geos import *
 from django.contrib.gis.geos.base import gdal, numpy, GEOSBase
 from django.contrib.gis.geos.libgeos import GEOS_PREPARE
@@ -180,13 +182,14 @@ class GEOSTest(unittest.TestCase, TestDataMixin):
 
     def test01h_ewkt(self):
         "Testing EWKT."
-        srid = 32140
-        for p in self.geometries.polygons:
-            ewkt = 'SRID=%d;%s' % (srid, p.wkt)
-            poly = fromstr(ewkt)
-            self.assertEqual(srid, poly.srid)
-            self.assertEqual(srid, poly.shell.srid)
-            self.assertEqual(srid, fromstr(poly.ewkt).srid) # Checking export
+        srids = (-1, 32140)
+        for srid in srids:
+            for p in self.geometries.polygons:
+                ewkt = 'SRID=%d;%s' % (srid, p.wkt)
+                poly = fromstr(ewkt)
+                self.assertEqual(srid, poly.srid)
+                self.assertEqual(srid, poly.shell.srid)
+                self.assertEqual(srid, fromstr(poly.ewkt).srid) # Checking export
 
     def test01i_json(self):
         "Testing GeoJSON input/output (via GDAL)."
