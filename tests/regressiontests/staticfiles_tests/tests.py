@@ -300,11 +300,11 @@ class TestCollectionCachedStorage(BaseCollectionTestCase,
             """, "/static/test/file.dad0999e4f8f.txt")
         self.assertTemplateRenders("""
             {% load static from staticfiles %}{% static "cached/styles.css" %}
-            """, "/static/cached/styles.5653c259030b.css")
+            """, "/static/cached/styles.93b1147e8552.css")
 
     def test_template_tag_simple_content(self):
         relpath = self.cached_file_path("cached/styles.css")
-        self.assertEqual(relpath, "cached/styles.5653c259030b.css")
+        self.assertEqual(relpath, "cached/styles.93b1147e8552.css")
         with storage.staticfiles_storage.open(relpath) as relfile:
             content = relfile.read()
             self.assertFalse("cached/other.css" in content, content)
@@ -316,7 +316,7 @@ class TestCollectionCachedStorage(BaseCollectionTestCase,
         with storage.staticfiles_storage.open(relpath) as relfile:
             content = relfile.read()
             self.assertFalse("/static/cached/styles.css" in content)
-            self.assertTrue("/static/cached/styles.5653c259030b.css" in content)
+            self.assertTrue("/static/cached/styles.93b1147e8552.css" in content)
 
     def test_template_tag_denorm(self):
         relpath = self.cached_file_path("cached/denorm.css")
@@ -324,16 +324,26 @@ class TestCollectionCachedStorage(BaseCollectionTestCase,
         with storage.staticfiles_storage.open(relpath) as relfile:
             content = relfile.read()
             self.assertFalse("..//cached///styles.css" in content)
-            self.assertTrue("/static/cached/styles.5653c259030b.css" in content)
+            self.assertTrue("/static/cached/styles.93b1147e8552.css" in content)
 
     def test_template_tag_relative(self):
         relpath = self.cached_file_path("cached/relative.css")
-        self.assertEqual(relpath, "cached/relative.298ff891a8d4.css")
+        self.assertEqual(relpath, "cached/relative.8dffb45d91f5.css")
         with storage.staticfiles_storage.open(relpath) as relfile:
             content = relfile.read()
             self.assertFalse("../cached/styles.css" in content)
             self.assertFalse('@import "styles.css"' in content)
-            self.assertTrue("/static/cached/styles.5653c259030b.css" in content)
+            self.assertTrue("/static/cached/styles.93b1147e8552.css" in content)
+            self.assertFalse("url(img/relative.png)" in content)
+            self.assertTrue("/static/cached/img/relative.acae32e4532b.png" in content)
+
+    def test_template_tag_deep_relative(self):
+        relpath = self.cached_file_path("cached/css/window.css")
+        self.assertEqual(relpath, "cached/css/window.9db38d5169f3.css")
+        with storage.staticfiles_storage.open(relpath) as relfile:
+            content = relfile.read()
+            self.assertFalse('url(img/window.png)' in content)
+            self.assertTrue('url("/static/cached/css/img/window.acae32e4532b.png")' in content)
 
     def test_template_tag_url(self):
         relpath = self.cached_file_path("cached/url.css")
@@ -486,6 +496,9 @@ class TestMiscFinder(TestCase):
     """
     A few misc finder tests.
     """
+    def setUp(self):
+        default_storage._wrapped = empty
+
     def test_get_finder(self):
         self.assertTrue(isinstance(finders.get_finder(
             'django.contrib.staticfiles.finders.FileSystemFinder'),
@@ -499,13 +512,17 @@ class TestMiscFinder(TestCase):
         self.assertRaises(ImproperlyConfigured,
             finders.get_finder, 'foo.bar.FooBarFinder')
 
+    @override_settings(STATICFILES_DIRS='a string')
     def test_non_tuple_raises_exception(self):
         """
         We can't determine if STATICFILES_DIRS is set correctly just by
         looking at the type, but we can determine if it's definitely wrong.
         """
-        with self.settings(STATICFILES_DIRS='a string'):
-            self.assertRaises(ImproperlyConfigured, finders.FileSystemFinder)
+        self.assertRaises(ImproperlyConfigured, finders.FileSystemFinder)
+
+    @override_settings(MEDIA_ROOT='')
+    def test_location_empty(self):
+        self.assertRaises(ImproperlyConfigured, finders.DefaultStorageFinder)
 
 
 class TestTemplateTag(StaticFilesTestCase):

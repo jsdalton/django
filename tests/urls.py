@@ -1,6 +1,5 @@
 from django.conf.urls import patterns, include
 
-
 urlpatterns = patterns('',
     # test_client modeltest urls
     (r'^test_client/', include('modeltests.test_client.urls')),
@@ -22,11 +21,10 @@ urlpatterns = patterns('',
     # test urlconf for middleware tests
     (r'^middleware/', include('regressiontests.middleware.urls')),
 
-    # admin view tests
-    (r'^test_admin/', include('regressiontests.admin_views.urls')),
-    (r'^generic_inline_admin/', include('regressiontests.generic_inline_admin.urls')),
-
     # admin widget tests
     (r'widget_admin/', include('regressiontests.admin_widgets.urls')),
+
+    # admin custom URL tests
+    (r'^custom_urls/', include('regressiontests.admin_custom_urls.urls')),
 
 )
