@@ -19,10 +19,11 @@ There are seven steps in activating the Django admin site:
     1. Add ``'django.contrib.admin'`` to your :setting:`INSTALLED_APPS`
        setting.
 
-    2. Admin has three dependencies - :mod:`django.contrib.auth`,
-       :mod:`django.contrib.contenttypes` and :mod:`django.contrib.messages`.
-       If these applications are not in your :setting:`INSTALLED_APPS` list,
-       add them.
+    2. The admin has four dependencies - :mod:`django.contrib.auth`,
+       :mod:`django.contrib.contenttypes`,
+       :mod:`django.contrib.messages` and
+       :mod:`django.contrib.sessions`.  If these applications are not
+       in your :setting:`INSTALLED_APPS` list, add them.
 
     3. Add ``django.contrib.messages.context_processors.messages`` to
        :setting:`TEMPLATE_CONTEXT_PROCESSORS` and
@@ -694,6 +695,15 @@ subclass::
 
               The ``FieldListFilter`` API is currently considered internal
               and prone to refactoring.
+
+.. attribute:: ModelAdmin.list_max_show_all
+
+    .. versionadded:: 1.4
+
+    Set ``list_max_show_all`` to control how many items can appear on a "Show
+    all" admin change list page. The admin will display a "Show all" link on the
+    change list only if the total result count is less than or equal to this
+    setting. By default, this is set to ``200``.
 
 .. attribute:: ModelAdmin.list_per_page
 
@@ -1748,7 +1758,7 @@ creating your own ``AdminSite`` instance (see below), and changing the
 ``AdminSite`` objects
 =====================
 
-.. class:: AdminSite(name=None)
+.. class:: AdminSite(name='admin')
 
     A Django administrative site is represented by an instance of
     ``django.contrib.admin.sites.AdminSite``; by default, an instance of
@@ -1821,7 +1831,7 @@ In this example, we register the default ``AdminSite`` instance
 ``django.contrib.admin.site`` at the URL ``/admin/`` ::
 
     # urls.py
-    from django.conf.urls.defaults import *
+    from django.conf.urls import patterns, url, include
     from django.contrib import admin
 
     admin.autodiscover()
@@ -1837,7 +1847,7 @@ In this example, we register the ``AdminSite`` instance
 ``myproject.admin.admin_site`` at the URL ``/myadmin/`` ::
 
     # urls.py
-    from django.conf.urls.defaults import *
+    from django.conf.urls import patterns, url, include
     from myproject.admin import admin_site
 
     urlpatterns = patterns('',
@@ -1861,7 +1871,7 @@ separate versions of the admin site -- using the ``AdminSite`` instances
 respectively::
 
     # urls.py
-    from django.conf.urls.defaults import *
+    from django.conf.urls import patterns, url, include
     from myproject.admin import basic_site, advanced_site
 
     urlpatterns = patterns('',
@@ -1885,12 +1895,13 @@ a new view to your admin site, extend the base
 a pattern for your new view.
 
 .. note::
+
     Any view you render that uses the admin templates, or extends the base
     admin template, should provide the ``current_app`` argument to
-    :class:`~django.template.RequestContext` or :class:`~django.template.Context`
-    when rendering the template.  It should be set to either ``self.name`` if
-    your view is on an ``AdminSite`` or ``self.admin_site.name`` if your view
-    is on a ``ModelAdmin``.
+    :class:`~django.template.RequestContext` or
+    :class:`~django.template.Context` when rendering the template.  It should
+    be set to either ``self.name`` if your view is on an ``AdminSite`` or
+    ``self.admin_site.name`` if your view is on a ``ModelAdmin``.
 
 .. _admin-reverse-urls:
 

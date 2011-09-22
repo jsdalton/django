@@ -78,7 +78,7 @@ point at that file::
 
 Time for an example. Edit ``mysite/urls.py`` so it looks like this::
 
-    from django.conf.urls.defaults import patterns, include, url
+    from django.conf.urls import patterns, include, url
 
     from django.contrib import admin
     admin.autodiscover()
@@ -122,14 +122,13 @@ the URLconf will look for ``myapp/``. In a request to
 ``http://www.example.com/myapp/?page=3``, the URLconf will look for ``myapp/``.
 
 If you need help with regular expressions, see `Wikipedia's entry`_ and the
-`Python documentation`_. Also, the O'Reilly book "Mastering Regular Expressions"
-by Jeffrey Friedl is fantastic.
+documentation of the :mod:`re` module. Also, the O'Reilly book "Mastering
+Regular Expressions" by Jeffrey Friedl is fantastic.
 
 Finally, a performance note: these regular expressions are compiled the first
 time the URLconf module is loaded. They're super fast.
 
 .. _Wikipedia's entry: http://en.wikipedia.org/wiki/Regular_expression
-.. _Python documentation: http://docs.python.org/library/re.html
 
 Write your first view
 =====================
@@ -357,16 +356,18 @@ the list is empty.
 Write a 404 (page not found) view
 =================================
 
-When you raise :exc:`~django.http.Http404` from within a view, Django will load
-a special view devoted to handling 404 errors. It finds it by looking for the
-variable ``handler404``, which is a string in Python dotted syntax -- the same
-format the normal URLconf callbacks use. A 404 view itself has nothing special:
-It's just a normal view.
+When you raise :exc:`~django.http.Http404` from within a view, Django
+will load a special view devoted to handling 404 errors. It finds it
+by looking for the variable ``handler404`` in your root URLconf (and
+only in your root URLconf; setting ``handler404`` anywhere else will
+have no effect), which is a string in Python dotted syntax -- the same
+format the normal URLconf callbacks use. A 404 view itself has nothing
+special: It's just a normal view.
 
 You normally won't have to bother with writing 404 views. By default, URLconfs
 have the following line up top::
 
-    from django.conf.urls.defaults import patterns, include, url
+    from django.conf.urls import patterns, include, url
 
 That takes care of setting ``handler404`` in the current module. As you can see
 in ``django/conf/urls/defaults.py``, ``handler404`` is set to
@@ -393,9 +394,9 @@ Four more things to note about 404 views:
 Write a 500 (server error) view
 ===============================
 
-Similarly, URLconfs may define a ``handler500``, which points to a view to call
-in case of server errors. Server errors happen when you have runtime errors in
-view code.
+Similarly, your root URLconf may define a ``handler500``, which points
+to a view to call in case of server errors. Server errors happen when
+you have runtime errors in view code.
 
 Use the template system
 =======================
@@ -442,7 +443,7 @@ Namely, ``polls.views`` is in every callback.
 
 Because this is a common case, the URLconf framework provides a shortcut for
 common prefixes. You can factor out the common prefixes and add them as the
-first argument to :func:`~django.conf.urls.defaults.patterns`, like so::
+first argument to :func:`~django.conf.urls.patterns`, like so::
 
     urlpatterns = patterns('polls.views',
         (r'^polls/$', 'index'),
@@ -456,21 +457,21 @@ tidier.
 
 Since you generally don't want the prefix for one app to be applied to every
 callback in your URLconf, you can concatenate multiple
-:func:`~django.conf.urls.defaults.patterns`. Your full ``mysite/urls.py`` might
+:func:`~django.conf.urls.patterns`. Your full ``mysite/urls.py`` might
 now look like this::
 
-    from django.conf.urls.defaults import patterns, include, url
+    from django.conf.urls import patterns, include, url
 
     from django.contrib import admin
     admin.autodiscover()
-    
+
     urlpatterns = patterns('polls.views',
         (r'^polls/$', 'index'),
         (r'^polls/(?P<poll_id>\d+)/$', 'detail'),
         (r'^polls/(?P<poll_id>\d+)/results/$', 'results'),
         (r'^polls/(?P<poll_id>\d+)/vote/$', 'vote'),
     )
-    
+
     urlpatterns += patterns('',
         url(r'^admin/', include(admin.site.urls)),
     )
@@ -493,23 +494,23 @@ URLs within the app directory.
 
 Copy the file ``mysite/urls.py`` to ``polls/urls.py``. Then, change
 ``mysite/urls.py`` to remove the poll-specific URLs and insert an
-:func:`~django.conf.urls.defaults.include`, leaving you with::
+:func:`~django.conf.urls.include`, leaving you with::
 
     # This also imports the include function
-    from django.conf.urls.defaults import patterns, include, url
-    
+    from django.conf.urls import patterns, include, url
+
     from django.contrib import admin
     admin.autodiscover()
-    
+
     urlpatterns = patterns('',
         (r'^polls/', include('polls.urls')),
         url(r'^admin/', include(admin.site.urls)),
     )
 
-:func:`~django.conf.urls.defaults.include` simply references another URLconf.
+:func:`~django.conf.urls.include` simply references another URLconf.
 Note that the regular expression doesn't have a ``$`` (end-of-string match
 character) but has the trailing slash. Whenever Django encounters
-:func:`~django.conf.urls.defaults.include`, it chops off whatever part of the
+:func:`~django.conf.urls.include`, it chops off whatever part of the
 URL matched up to that point and sends the remaining string to the included
 URLconf for further processing.
 
@@ -526,7 +527,7 @@ URLconf by removing the leading "polls/" from each line, and removing the
 lines registering the admin site. Your ``polls/urls.py`` file should now look like
 this::
 
-    from django.conf.urls.defaults import patterns, include, url
+    from django.conf.urls import patterns, include, url
 
     urlpatterns = patterns('polls.views',
         (r'^$', 'index'),
@@ -535,7 +536,7 @@ this::
         (r'^(?P<poll_id>\d+)/vote/$', 'vote'),
     )
 
-The idea behind :func:`~django.conf.urls.defaults.include` and URLconf
+The idea behind :func:`~django.conf.urls.include` and URLconf
 decoupling is to make it easy to plug-and-play URLs. Now that polls are in their
 own URLconf, they can be placed under "/polls/", or under "/fun_polls/", or
 under "/content/polls/", or any other path root, and the app will still work.

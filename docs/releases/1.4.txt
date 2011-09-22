@@ -57,9 +57,26 @@ HTML5
 
 We've switched the admin and other bundled templates to use the HTML5
 doctype. While Django will be careful in its use of HTML5 features, to maintain
-compatibility with old browsers, this change means that you can use any HTML5
+compatibility with older browsers, this change means that you can use any HTML5
 features you need in admin pages without having to lose HTML validity or
 override the provided templates to change the doctype.
+
+Supported browsers for the admin
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Django hasn't had a clear policy on which browsers are supported for using the
+admin app. Django's new policy formalizes existing practices: `YUI's A-grade`_
+browsers should provide a fully-functional admin experience, with the notable
+exception of IE6, which is no longer supported.
+
+Released over ten years ago, IE6 imposes many limitations on modern web
+development. The practical implications of this policy are that contributors
+are free to improve the admin without consideration for these limitations.
+
+This new policy **has no impact** on development outside of the admin. Users of
+Django are free to develop webapps compatible with any range of browsers.
+
+.. _YUI's A-grade: http://yuilibrary.com/yui/docs/tutorials/gbs/
 
 List filters in admin interface
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -235,6 +252,33 @@ filename. For example, the file ``css/styles.css`` would also be saved as
 See the :class:`~django.contrib.staticfiles.storage.CachedStaticFilesStorage`
 docs for more information.
 
+``Model.objects.bulk_create`` in the ORM
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This method allows for more efficient creation of multiple objects in the ORM.
+It can provide significant performance increases if you have many objects,
+Django makes use of this internally, meaning some operations (such as database
+setup for test suites) has seen a performance benefit as a result.
+
+See the :meth:`~django.db.models.query.QuerySet.bulk_create` docs for more
+information.
+
+No wrapping of exceptions in ``TEMPLATE_DEBUG`` mode
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In previous versions of Django, whenever the :setting:`TEMPLATE_DEBUG` setting
+was ``True``, any exception raised during template rendering (even exceptions
+unrelated to template syntax) were wrapped in ``TemplateSyntaxError`` and
+re-raised. This was done in order to provide detailed template source location
+information in the debug 500 page.
+
+In Django 1.4, exceptions are no longer wrapped. Instead, the original
+exception is annotated with the source information. This means that catching
+exceptions from template rendering is now consistent regardless of the value of
+:setting:`TEMPLATE_DEBUG`, and there's no need to catch and unwrap
+``TemplateSyntaxError`` in order to catch other errors.
+
+
 Minor features
 ~~~~~~~~~~~~~~
 
@@ -262,9 +306,14 @@ Django 1.4 also includes several smaller improvements worth noting:
   MySQL with the InnoDB database engine.
 
 * A new 403 response handler has been added as
-  ``'django.views.defaults.permission_denied'``. See the documentation
-  about :ref:`the 403 (HTTP Forbidden) view<http_forbidden_view>` for more
-  information.
+  ``'django.views.defaults.permission_denied'``. You can set your own handler by
+  setting the value of :data:`django.conf.urls.handler403`. See the
+  documentation about :ref:`the 403 (HTTP Forbidden) view<http_forbidden_view>`
+  for more information.
+
+* The :ttag:`trans` template tag now takes an optional ``as`` argument to
+  be able to retrieve a translation string without displaying it but setting
+  a template context variable instead.
 
 .. _backwards-incompatible-changes-1.4:
 
@@ -306,6 +355,18 @@ In case your ``ADMIN_MEDIA_PREFIX`` is set to an own domain (e.g.
     your server's file system when you deploy your site, you have to update
     that path. The files were moved from :file:`django/contrib/admin/media/`
     to :file:`django/contrib/admin/static/admin/`.
+
+Removed admin icons
+~~~~~~~~~~~~~~~~~~~
+
+As part of an effort to improve the performance and usability of the admin's
+vertical and horizontal "filter" widgets, some icon files were removed and
+grouped into a single sprite file (``selector-icons.gif``):
+``selector-add.gif``, ``selector-addall.gif``, ``selector-remove.gif``,
+``selector-removeall.gif``, ``selector_stacked-add.gif`` and
+``selector_stacked-remove.gif``. If you used those icons to customize the
+admin then you will want to replace them with your own icons or retrieve them
+from a previous release.
 
 Compatibility with old signed data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -462,7 +523,7 @@ CSRF protection extended to PUT and DELETE
 Previously, Django's :doc:`CSRF protection </ref/contrib/csrf/>` provided
 protection against only POST requests. Since use of PUT and DELETE methods in
 AJAX applications is becoming more common, we now protect all methods not
-defined as safe by RFC 2616 i.e. we exempt GET, HEAD, OPTIONS and TRACE, and
+defined as safe by :rfc:`2616` i.e. we exempt GET, HEAD, OPTIONS and TRACE, and
 enforce protection on everything else.
 
 If you using PUT or DELETE methods in AJAX applications, please see the
@@ -474,6 +535,38 @@ If you using PUT or DELETE methods in AJAX applications, please see the
 This was an alias to ``django.template.loader`` since 2005, it has been removed
 without emitting a warning due to the length of the deprecation. If your code
 still referenced this please use ``django.template.loader`` instead.
+
+``django.db.models.fields.URLField.verify_exists``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This functionality has been removed due to intractable performance and
+security issues. Any existing usage of ``verify_exists`` should be
+removed.
+
+``django.core.files.storage.Storage.open``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``open`` method of the base Storage class took an obscure parameter
+``mixin`` which allowed to dynamically change the base classes of the
+returned file object. In the rare case you relied on the `mixin` parameter,
+you can easily achieve the same by overriding the `open` method, e.g.::
+
+    from django.core.files import File
+    from django.core.files.storage import FileSystemStorage
+
+    class Spam(File):
+        """
+        Spam, spam, spam, spam and spam.
+        """
+        def ham(self):
+            return 'eggs'
+
+    class SpamStorage(FileSystemStorage):
+        """
+        A custom file storage backend.
+        """
+        def open(self, name, mode='rb'):
+            return Spam(open(self.path(name), mode))
 
 .. _deprecated-features-1.4:
 
@@ -516,8 +609,7 @@ to :class:`django.utils.log.AdminEmailHandler` to prevent admin error emails in
 
    'filters': {
         'require_debug_false': {
-            '()': 'django.utils.log.CallbackFilter',
-            'callback': lambda r: not DEBUG
+            '()': 'django.utils.log.RequireDebugFalse'
         }
     },
     'handlers': {
@@ -538,3 +630,13 @@ backwards-compatibility shim will be removed entirely.
 
 The existence of any ``'filters'`` key under the ``'mail_admins'`` handler will
 disable this backward-compatibility shim and deprecation warning.
+
+``django.conf.urls.defaults``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Until Django 1.3 the functions :func:`~django.conf.urls.include`,
+:func:`~django.conf.urls.patterns` and :func:`~django.conf.urls.url` plus
+:data:`~django.conf.urls.handler404`, :data:`~django.conf.urls.handler500`
+were located in a ``django.conf.urls.defaults`` module.
+
+Starting with Django 1.4 they are now available in :mod:`django.conf.urls`.
