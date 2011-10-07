@@ -3,6 +3,7 @@ from __future__ import with_statement
 from django.forms import EmailField
 from django.test import SimpleTestCase, TestCase, skipUnlessDBFeature
 from django.utils.unittest import skip
+from django.test.utils import override_settings
 
 from models import Person
 
@@ -148,6 +149,27 @@ class AssertFieldOutputTests(SimpleTestCase):
         self.assertRaises(AssertionError, self.assertFieldOutput, EmailField, {'a@a.com': 'a@a.com'}, {'aaa': error_invalid + [u'Another error']})
         self.assertRaises(AssertionError, self.assertFieldOutput, EmailField, {'a@a.com': 'Wrong output'}, {'aaa': error_invalid})
         self.assertRaises(AssertionError, self.assertFieldOutput, EmailField, {'a@a.com': 'a@a.com'}, {'aaa': [u'Come on, gimme some well formatted data, dude.']})
+
+
+class OverrideSettingsTestsSuper(TestCase):
+    """
+    Dummy class for testing max recursion error in child class call to super()
+    """
+    def test_max_recursion_error(self):
+        pass
+
+
+@override_settings(FOO='bar')
+class OverrideSettingsTests(OverrideSettingsTestsSuper):
+    def test_max_recursion_error(self):
+        """
+        Overriding a method on a super class and then calling that method on
+        the super class triggers infinite recursion
+        """
+        try:
+            super(OverrideSettingsTests, self).test_max_recursion_error()
+        except RuntimeError, e:
+            self.fail()
 
 
 __test__ = {"API_TEST": r"""
