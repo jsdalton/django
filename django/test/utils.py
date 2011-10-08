@@ -196,20 +196,16 @@ class override_settings(object):
     def __call__(self, test_func):
         from django.test import TransactionTestCase
         if isinstance(test_func, type) and issubclass(test_func, TransactionTestCase):
-            # Make sure this class has not already been patched
-            if not getattr(test_func, '_patched_for_settings_override', None):
-                test_func._original_pre_setup = test_func._pre_setup
-                test_func._original_post_teardown = test_func._post_teardown
-                def _pre_setup(innerself):
-                    self.enable()
-                    innerself._original_pre_setup()
-                def _post_teardown(innerself):
-                    innerself._original_post_teardown()
-                    self.disable()
-                test_func._pre_setup = _pre_setup
-                test_func._post_teardown = _post_teardown
-                # Mark class as patched
-                test_func._patched_for_settings_override = True
+            original_pre_setup = test_func._pre_setup
+            original_post_teardown = test_func._post_teardown
+            def _pre_setup(innerself):
+                self.enable()
+                original_pre_setup(innerself)
+            def _post_teardown(innerself):
+                original_post_teardown(innerself)
+                self.disable()
+            test_func._pre_setup = _pre_setup
+            test_func._post_teardown = _post_teardown
             return test_func
         else:
             @wraps(test_func)
