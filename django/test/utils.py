@@ -3,6 +3,7 @@ from __future__ import with_statement
 import types
 import warnings
 from django.conf import settings, UserSettingsHolder
+from django.core import mail
 from django.core import cache
 from django.test.signals import template_rendered, setting_changed
 from django.template import Template, loader, TemplateDoesNotExist

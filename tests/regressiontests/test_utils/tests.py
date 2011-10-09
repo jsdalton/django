@@ -1,5 +1,6 @@
 from __future__ import with_statement
 
+import tempfile
 from django.forms import EmailField
 from django.test import SimpleTestCase, TestCase, skipUnlessDBFeature
 from django.utils.unittest import skip, skipUnless
