@@ -134,7 +134,6 @@ class SkippingExtraTests(TestCase):
         pass
 
 
-<<<<<<< HEAD
 # We must set this via a function to confirm that cache set test has run
 # before cache get test
 _cache_set_test_has_run = False
@@ -307,7 +306,8 @@ class MemcachedCacheResetTests(BaseCacheReset, CacheResetTestsMixin):
 
     def modified_cache(self):
         return get_cache(self.backend_name, LOCATION=self.memcached_location)
-=======
+
+
 class AssertRaisesMsgTest(SimpleTestCase):
 
     def test_special_re_chars(self):
@@ -325,7 +325,6 @@ class AssertFieldOutputTests(SimpleTestCase):
         self.assertRaises(AssertionError, self.assertFieldOutput, EmailField, {'a@a.com': 'a@a.com'}, {'aaa': error_invalid + [u'Another error']})
         self.assertRaises(AssertionError, self.assertFieldOutput, EmailField, {'a@a.com': 'Wrong output'}, {'aaa': error_invalid})
         self.assertRaises(AssertionError, self.assertFieldOutput, EmailField, {'a@a.com': 'a@a.com'}, {'aaa': [u'Come on, gimme some well formatted data, dude.']})
->>>>>>> upstream/master
 
 
 __test__ = {"API_TEST": r"""
