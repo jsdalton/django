@@ -1,9 +1,7 @@
 from __future__ import with_statement
 
-import sys
-import tempfile
-
-from django.test import TestCase, skipUnlessDBFeature, skipIfDBFeature
+from django.forms import EmailField
+from django.test import SimpleTestCase, TestCase, skipUnlessDBFeature
 from django.utils.unittest import skip, skipUnless
 from django.conf import settings
 from django.core import management
@@ -53,6 +51,7 @@ class AssertNumQueriesTests(TestCase):
             self.client.get("/test_utils/get_person/%s/" % person.pk)
             self.client.get("/test_utils/get_person/%s/" % person.pk)
         self.assertNumQueries(2, test_func)
+
 
 class AssertNumQueriesContextManagerTests(TestCase):
     urls = 'regressiontests.test_utils.urls'
@@ -135,6 +134,7 @@ class SkippingExtraTests(TestCase):
         pass
 
 
+<<<<<<< HEAD
 # We must set this via a function to confirm that cache set test has run
 # before cache get test
 _cache_set_test_has_run = False
@@ -307,6 +307,25 @@ class MemcachedCacheResetTests(BaseCacheReset, CacheResetTestsMixin):
 
     def modified_cache(self):
         return get_cache(self.backend_name, LOCATION=self.memcached_location)
+=======
+class AssertRaisesMsgTest(SimpleTestCase):
+
+    def test_special_re_chars(self):
+        """assertRaisesMessage shouldn't interpret RE special chars."""
+        def func1():
+            raise ValueError("[.*x+]y?")
+        self.assertRaisesMessage(ValueError, "[.*x+]y?", func1)
+
+
+class AssertFieldOutputTests(SimpleTestCase):
+
+    def test_assert_field_output(self):
+        error_invalid = [u'Enter a valid e-mail address.']
+        self.assertFieldOutput(EmailField, {'a@a.com': 'a@a.com'}, {'aaa': error_invalid})
+        self.assertRaises(AssertionError, self.assertFieldOutput, EmailField, {'a@a.com': 'a@a.com'}, {'aaa': error_invalid + [u'Another error']})
+        self.assertRaises(AssertionError, self.assertFieldOutput, EmailField, {'a@a.com': 'Wrong output'}, {'aaa': error_invalid})
+        self.assertRaises(AssertionError, self.assertFieldOutput, EmailField, {'a@a.com': 'a@a.com'}, {'aaa': [u'Come on, gimme some well formatted data, dude.']})
+>>>>>>> upstream/master
 
 
 __test__ = {"API_TEST": r"""

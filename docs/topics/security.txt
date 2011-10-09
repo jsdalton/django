@@ -12,12 +12,13 @@ Cross site scripting (XSS) protection
 
 .. highlightlang:: html+django
 
-XSS attacks allow a user to inject client side scripts into the
-browsers of other users. This is usually achieved by storing the malicious
-scripts to the database where it will be retrieved and displayed to other users
-or to get users to click a link containing variables containing scripts that
-will be rendered by the user's browser. However, XSS attacks can originate
-from any untrusted source of data such as cookies or web services.
+XSS attacks allow a user to inject client side scripts into the browsers of
+other users. This is usually achieved by storing the malicious scripts in the
+database where it will be retrieved and displayed to other users, or by getting
+users to click a link which will cause the attacker's javascript to be executed
+by the user's browser. However, XSS attacks can originate from any untrusted
+source of data, such as cookies or web services, whenever the data is not
+sufficiently sanitized before including in a page.
 
 Using Django templates protects you against the majority of XSS attacks.
 However, it is important to understand what protections it provides
@@ -44,8 +45,8 @@ In addition, if you are using the template system to output something other
 than HTML, there may be entirely separate characters and words which require
 escaping.
 
-You should also be very careful when storing HTML to the database especially
-when that HTML will be retrieved and displayed.
+You should also be very careful when storing HTML in the database, especially
+when that HTML is retrieved and displayed.
 
 Cross site request forgery (CSRF) protection
 ============================================
@@ -143,6 +144,23 @@ information is not leaked:
   redirecting all HTTP traffic to HTTPS).
 
 .. _additional-security-topics:
+
+Host Headers and Virtual Hosting
+================================
+
+Django uses the Host header provided by the client to construct URLs
+in certain cases. While these values are sanitized to prevent Cross
+Site Scripting attacks, they can be used for Cross-Site Request
+Forgery and cache poisoning attacks in some circumstances. We
+recommend that users of Django ensure their web-server configuration
+always validates incoming HTTP Host headers against the expected host
+name, disallows requests with no Host header, and that the web server
+not be configured with a catch-all virtual host which forwards
+requests to a Django application.
+
+Additionally, as of 1.3.1, Django requires users to explicitly enable
+support for the X-Forwarded-Host header if their configuration
+requires it.
 
 Additional security topics
 ==========================

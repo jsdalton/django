@@ -154,7 +154,7 @@ This function is useful when you need your Django application to be localizable
 to languages where the number and complexity of `plural forms
 <http://www.gnu.org/software/gettext/manual/gettext.html#Plural-forms>`_ is
 greater than the two forms used in English ('object' for the singular and
-'objects' for all the cases where ``count`` is different from zero, irrespective
+'objects' for all the cases where ``count`` is different from one, irrespective
 of its value.)
 
 For example::
@@ -425,6 +425,8 @@ Translations in :doc:`Django templates </topics/templates>` uses two template
 tags and a slightly different syntax than in Python code. To give your template
 access to these tags, put ``{% load i18n %}`` toward the top of your template.
 
+.. templatetag:: trans
+
 ``trans`` template tag
 ----------------------
 
@@ -451,6 +453,32 @@ It's not possible to mix a template variable inside a string within ``{% trans
 %}``. If your translations require strings with variables (placeholders), use
 ``{% blocktrans %}`` instead.
 
+.. versionchanged:: 1.4
+
+If you'd like to retrieve a translated string without displaying it, you can
+use the following syntax::
+
+    {% trans "This is the title" as the_title %}
+
+    <title>{{ the_title }}</title>
+    <meta name="description" content="{{ the_title }}">
+
+In practice you'll use this to get strings that are used in multiple places
+or should be used as arguments for other template tags or filters::
+
+    {% trans "starting point" as start %}
+    {% trans "end point" as end %}
+    {% trans "La Grande Boucle" as race %}
+
+    <h1>
+      <a href="/" title="{% blocktrans %}Back to '{{ race }}' homepage{% endblocktrans %}">{{ race }}</a>
+    </h1>
+    <p>
+    {% for stage in tour_stages %}
+        {% cycle start end %}: {{ stage }}{% if forloop.counter|divisibleby:2 %}<br />{% else %}, {% endif %}
+    {% endfor %}
+    </p>
+
 .. templatetag:: blocktrans
 
 ``blocktrans`` template tag
@@ -459,7 +487,7 @@ It's not possible to mix a template variable inside a string within ``{% trans
 .. versionchanged:: 1.3
    New keyword argument format.
 
-Contrarily to the ``trans`` tag, the ``blocktrans`` tag allows you to mark
+Contrarily to the :ttag:`trans` tag, the ``blocktrans`` tag allows you to mark
 complex sentences consisting of literals and variable content for translation
 by making use of placeholders::
 
@@ -485,6 +513,13 @@ You can use multiple expressions inside a single ``blocktrans`` tag::
 
 .. note:: The previous more verbose format is still supported:
    ``{% blocktrans with book|title as book_t and author|title as author_t %}``
+
+.. versionchanged:: 1.4
+
+If resolving one of the block arguments fails, blocktrans will fall back to
+the default language by deactivating the currently active language
+temporarily with the :func:`~django.utils.translation.deactivate_all`
+function.
 
 This tag also provides for pluralization. To use it:
 
@@ -786,11 +821,11 @@ Language prefix in URL patterns
 .. function:: i18n_patterns(prefix, pattern_description, ...)
 
 This function can be used in your root URLconf as a replacement for the normal
-:func:`django.conf.urls.defaults.patterns` function. Django will automatically
+:func:`django.conf.urls.patterns` function. Django will automatically
 prepend the current active language code to all url patterns defined within
 :func:`~django.conf.urls.i18n.i18n_patterns`. Example URL patterns::
 
-    from django.conf.urls.defaults import patterns, include, url
+    from django.conf.urls import patterns, include, url
     from django.conf.urls.i18n import i18n_patterns
 
     urlpatterns = patterns(''
@@ -844,7 +879,7 @@ Translating URL patterns
 URL patterns can also be marked translatable using the
 :func:`~django.utils.translation.ugettext_lazy` function. Example::
 
-    from django.conf.urls.defaults import patterns, include, url
+    from django.conf.urls import patterns, include, url
     from django.conf.urls.i18n import i18n_patterns
     from django.utils.translation import ugettext_lazy as _
 

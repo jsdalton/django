@@ -1,13 +1,10 @@
 import StringIO
-import sys
 
-from django.conf import settings
 from django.contrib.sites.models import Site
 from django.core import management
-from django.db import DEFAULT_DB_ALIAS
 from django.test import TestCase, TransactionTestCase, skipUnlessDBFeature
 
-from models import Article, Blog, Book, Category, Person, Spy, Tag, Visa
+from models import Article, Book, Spy, Tag, Visa
 
 
 class TestCaseFixtureLoadingTests(TestCase):
@@ -254,6 +251,17 @@ class FixtureLoadingTests(TestCase):
             '<Article: Who needs to use compressed data?>',
             '<Article: Python program becomes self aware>'
         ])
+
+    def test_loaddata_error_message(self):
+        """
+        Verifies that loading a fixture which contains an invalid object
+        outputs an error message which contains the pk of the object
+        that triggered the error.
+        """
+        new_io = StringIO.StringIO()
+        management.call_command('loaddata', 'invalid.json', verbosity=0, stderr=new_io, commit=False)
+        output = new_io.getvalue().strip().split('\n')
+        self.assertRegexpMatches(output[-1], "IntegrityError: Could not load fixtures.Article\(pk=1\): .*$")
 
     def test_loading_using(self):
         # Load db fixtures 1 and 2. These will load using the 'default' database identifier explicitly

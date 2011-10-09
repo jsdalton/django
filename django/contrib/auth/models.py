@@ -10,9 +10,10 @@ from django.utils.translation import ugettext_lazy as _
 
 from django.contrib import auth
 from django.contrib.auth.signals import user_logged_in
+# UNUSABLE_PASSWORD is still imported here for backwards compatibility
 from django.contrib.auth.utils import (get_hexdigest, make_password,
-                                       check_password, is_password_usable,
-                                       get_random_string, UNUSABLE_PASSWORD)
+        check_password, is_password_usable, get_random_string,
+        UNUSABLE_PASSWORD)
 from django.contrib.contenttypes.models import ContentType
 
 def update_last_login(sender, user, **kwargs):
@@ -131,46 +132,33 @@ class UserManager(models.Manager):
 # A few helper functions for common logic between User and AnonymousUser.
 def _user_get_all_permissions(user, obj):
     permissions = set()
-    anon = user.is_anonymous()
     for backend in auth.get_backends():
-        if not anon or backend.supports_anonymous_user:
-            if hasattr(backend, "get_all_permissions"):
-                if obj is not None:
-                    if backend.supports_object_permissions:
-                        permissions.update(
-                            backend.get_all_permissions(user, obj)
-                        )
-                else:
-                    permissions.update(backend.get_all_permissions(user))
+        if hasattr(backend, "get_all_permissions"):
+            if obj is not None:
+                permissions.update(backend.get_all_permissions(user, obj))
+            else:
+                permissions.update(backend.get_all_permissions(user))
     return permissions
 
 
 def _user_has_perm(user, perm, obj):
-    anon = user.is_anonymous()
-    active = user.is_active
     for backend in auth.get_backends():
-        if (not active and not anon and backend.supports_inactive_user) or \
-                    (not anon or backend.supports_anonymous_user):
-            if hasattr(backend, "has_perm"):
-                if obj is not None:
-                    if (backend.supports_object_permissions and
-                        backend.has_perm(user, perm, obj)):
-                            return True
-                else:
-                    if backend.has_perm(user, perm):
+        if hasattr(backend, "has_perm"):
+            if obj is not None:
+                if backend.has_perm(user, perm, obj):
                         return True
+            else:
+                if backend.has_perm(user, perm):
+                    return True
     return False
 
 
 def _user_has_module_perms(user, app_label):
-    anon = user.is_anonymous()
     active = user.is_active
     for backend in auth.get_backends():
-        if (not active and not anon and backend.supports_inactive_user) or \
-                    (not anon or backend.supports_anonymous_user):
-            if hasattr(backend, "has_module_perms"):
-                if backend.has_module_perms(user, app_label):
-                    return True
+        if hasattr(backend, "has_module_perms"):
+            if backend.has_module_perms(user, app_label):
+                return True
     return False
 
 
@@ -263,10 +251,7 @@ class User(models.Model):
         for backend in auth.get_backends():
             if hasattr(backend, "get_group_permissions"):
                 if obj is not None:
-                    if backend.supports_object_permissions:
-                        permissions.update(
-                            backend.get_group_permissions(self, obj)
-                        )
+                    permissions.update(backend.get_group_permissions(self, obj))
                 else:
                     permissions.update(backend.get_group_permissions(self))
         return permissions

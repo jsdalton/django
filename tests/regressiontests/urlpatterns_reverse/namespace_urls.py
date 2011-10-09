@@ -1,4 +1,4 @@
-from django.conf.urls.defaults import *
+from django.conf.urls import patterns, url, include
 from views import view_class_instance
 
 class URLObject(object):
@@ -43,5 +43,7 @@ urlpatterns = patterns('regressiontests.urlpatterns_reverse.views',
     (r'^ns-included2/', include('regressiontests.urlpatterns_reverse.included_namespace_urls', namespace='inc-ns2')),
 
     (r'^included/', include('regressiontests.urlpatterns_reverse.included_namespace_urls')),
+
+    (r'^ns-outer/(?P<outer>\d+)/', include('regressiontests.urlpatterns_reverse.included_namespace_urls', namespace='inc-outer')),
 
 )

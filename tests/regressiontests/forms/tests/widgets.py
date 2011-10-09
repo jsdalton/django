@@ -2,9 +2,6 @@
 
 import copy
 import datetime
-import re
-import time
-from decimal import Decimal
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.forms import *
@@ -13,7 +10,6 @@ from django.utils import formats
 from django.utils.safestring import mark_safe
 from django.utils.translation import activate, deactivate
 from django.utils.unittest import TestCase
-
 
 
 class FormsWidgetTestCase(TestCase):
@@ -260,6 +256,15 @@ class FormsWidgetTestCase(TestCase):
 <option value="R">Ringo</option>
 </select>""")
 
+        # Only one option can be selected, see #8103:
+        self.assertEqual(w.render('choices', '0', choices=(('0', '0'), ('1', '1'), ('2', '2'), ('3', '3'), ('0', 'extra'))), """<select name="choices">
+<option value="0" selected="selected">0</option>
+<option value="1">1</option>
+<option value="2">2</option>
+<option value="3">3</option>
+<option value="0">extra</option>
+</select>""")
+
         # The value is compared to its str():
         self.assertEqual(w.render('num', 2, choices=[('1', '1'), ('2', '2'), ('3', '3')]), """<select name="num">
 <option value="1">1</option>
@@ -441,6 +446,15 @@ class FormsWidgetTestCase(TestCase):
 <option value="P">Paul</option>
 <option value="G">George</option>
 <option value="R">Ringo</option>
+</select>""")
+
+        # Multiple options (with the same value) can be selected, see #8103:
+        self.assertEqual(w.render('choices', ['0'], choices=(('0', '0'), ('1', '1'), ('2', '2'), ('3', '3'), ('0', 'extra'))), """<select multiple="multiple" name="choices">
+<option value="0" selected="selected">0</option>
+<option value="1">1</option>
+<option value="2">2</option>
+<option value="3">3</option>
+<option value="0" selected="selected">extra</option>
 </select>""")
 
         # If multiple values are given, but some of them are not valid, the valid ones are selected:

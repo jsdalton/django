@@ -14,12 +14,10 @@ import pkg_resources
 import imp
 import StringIO
 import os.path
-import warnings
 
 from django.template import TemplateDoesNotExist, Context
 from django.template.loaders.eggs import Loader as EggLoader
 from django.template import loader
-from django.test.utils import get_warnings_state, restore_warnings_state
 from django.utils import unittest
 
 
@@ -144,6 +142,17 @@ class RenderToStringTest(unittest.TestCase):
                                          context_instance=context)
         self.assertEqual(output, 'obj:after')
         self.assertEqual(context['obj'], 'before')
+
+    def test_empty_list(self):
+        self.assertRaisesRegexp(TemplateDoesNotExist,
+                                'No template names provided$',
+                                loader.render_to_string, [])
+
+
+    def test_select_templates_from_empty_list(self):
+        self.assertRaisesRegexp(TemplateDoesNotExist,
+                                'No template names provided$',
+                                loader.select_template, [])
 
 if __name__ == "__main__":
     unittest.main()

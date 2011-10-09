@@ -1,9 +1,7 @@
-from django.template.base import TemplateSyntaxError, TemplateDoesNotExist, Variable
-from django.template.base import Library, Node, TextNode
-from django.template.context import Context
+from django.conf import settings
+from django.template.base import TemplateSyntaxError, Library, Node, TextNode
 from django.template.defaulttags import token_kwargs
 from django.template.loader import get_template
-from django.conf import settings
 from django.utils.safestring import mark_safe
 
 register = Library()
@@ -90,8 +88,9 @@ class ExtendsNode(Node):
 
     def get_parent(self, context):
         if self.parent_name_expr:
-            self.parent_name = self.parent_name_expr.resolve(context)
-        parent = self.parent_name
+            parent = self.parent_name_expr.resolve(context)
+        else:
+            parent = self.parent_name
         if not parent:
             error_msg = "Invalid template name in 'extends' tag: %r." % parent
             if self.parent_name_expr:

@@ -134,6 +134,9 @@ def get_filter_tests():
         'filter-truncatewords02': ('{{ a|truncatewords:"2" }} {{ b|truncatewords:"2"}}',
             {"a": "alpha & bravo", "b": mark_safe("alpha &amp; bravo")}, u"alpha &amp; ... alpha &amp; ..."),
 
+        'filter-truncatechars01': ('{{ a|truncatechars:5 }}', {'a': "Testing, testing"}, u"Te..."),
+        'filter-truncatechars02': ('{{ a|truncatechars:7 }}', {'a': "Testing"}, u"Testing"),
+
         # The "upper" filter messes up entities (which are case-sensitive),
         # so it's not safe for non-escaping purposes.
         'filter-upper01': ('{% autoescape off %}{{ a|upper }} {{ b|upper }}{% endautoescape %}', {"a": "a & b", "b": mark_safe("a &amp; b")}, u"A & B A &AMP; B"),
@@ -343,10 +346,10 @@ def get_filter_tests():
         #Ticket 9520: Make sure |date doesn't blow up on non-dates
         'date03': (r'{{ d|date:"m" }}', {'d': 'fail_string'}, ''),
 
-         # Tests for #11687
+         # Tests for #11687 and #16676
          'add01': (r'{{ i|add:"5" }}', {'i': 2000}, '2005'),
-         'add02': (r'{{ i|add:"napis" }}', {'i': 2000}, '2000'),
-         'add03': (r'{{ i|add:16 }}', {'i': 'not_an_int'}, 'not_an_int'),
+         'add02': (r'{{ i|add:"napis" }}', {'i': 2000}, ''),
+         'add03': (r'{{ i|add:16 }}', {'i': 'not_an_int'}, ''),
          'add04': (r'{{ i|add:"16" }}', {'i': 'not_an_int'}, 'not_an_int16'),
          'add05': (r'{{ l1|add:l2 }}', {'l1': [1, 2], 'l2': [3, 4]}, '[1, 2, 3, 4]'),
          'add06': (r'{{ t1|add:t2 }}', {'t1': (3, 4), 't2': (1, 2)}, '(3, 4, 1, 2)'),

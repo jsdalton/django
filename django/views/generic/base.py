@@ -1,7 +1,6 @@
 from functools import update_wrapper
 from django import http
 from django.core.exceptions import ImproperlyConfigured
-from django.template import RequestContext, loader
 from django.template.response import TemplateResponse
 from django.utils.log import getLogger
 from django.utils.decorators import classonlymethod
@@ -141,7 +140,7 @@ class RedirectView(View):
         are provided as kwargs to this method.
         """
         if self.url:
-            args = self.request.META["QUERY_STRING"]
+            args = self.request.META.get('QUERY_STRING', '')
             if args and self.query_string:
                 url = "%s?%s" % (self.url, args)
             else:

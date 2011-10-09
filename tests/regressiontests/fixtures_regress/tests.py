@@ -2,7 +2,6 @@
 # Unittests for fixtures.
 import os
 import re
-import sys
 try:
     from cStringIO import StringIO
 except ImportError:
@@ -13,8 +12,8 @@ from django.core.management.commands.dumpdata import sort_dependencies
 from django.core.management.base import CommandError
 from django.db.models import signals
 from django.db import transaction
-from django.test import TestCase, TransactionTestCase, skipIfDBFeature, \
-    skipUnlessDBFeature
+from django.test import (TestCase, TransactionTestCase, skipIfDBFeature,
+    skipUnlessDBFeature)
 
 from models import Animal, Stuff
 from models import Absolute, Parent, Child
@@ -278,19 +277,21 @@ class TestFixtures(TestCase):
         global pre_save_checks
         pre_save_checks = []
         signals.pre_save.connect(animal_pre_save_check)
-        management.call_command(
-            'loaddata',
-            'animal.xml',
-            verbosity=0,
-            commit=False,
-        )
-        self.assertEqual(
-            pre_save_checks,
-            [
-                ("Count = 42 (<type 'int'>)", "Weight = 1.2 (<type 'float'>)")
-            ]
-        )
-        signals.pre_save.disconnect(animal_pre_save_check)
+        try:
+            management.call_command(
+                'loaddata',
+                'animal.xml',
+                verbosity=0,
+                commit=False,
+            )
+            self.assertEqual(
+                pre_save_checks,
+                [
+                    ("Count = 42 (<type 'int'>)", "Weight = 1.2 (<type 'float'>)")
+                ]
+            )
+        finally:
+            signals.pre_save.disconnect(animal_pre_save_check)
 
     def test_dumpdata_uses_default_manager(self):
         """
@@ -363,14 +364,37 @@ class TestFixtures(TestCase):
             % widget.pk
             )
 
+    def test_loaddata_works_when_fixture_has_forward_refs(self):
+        """
+        Regression for #3615 - Forward references cause fixtures not to load in MySQL (InnoDB)
+        """
+        management.call_command(
+            'loaddata',
+            'forward_ref.json',
+            verbosity=0,
+            commit=False
+        )
+        self.assertEqual(Book.objects.all()[0].id, 1)
+        self.assertEqual(Person.objects.all()[0].id, 4)
+
+    def test_loaddata_raises_error_when_fixture_has_invalid_foreign_key(self):
+        """
+        Regression for #3615 - Ensure data with nonexistent child key references raises error
+        """
+        stderr = StringIO()
+        management.call_command(
+            'loaddata',
+            'forward_ref_bad_data.json',
+            verbosity=0,
+            commit=False,
+            stderr=stderr,
+        )
+        self.assertTrue(
+            stderr.getvalue().startswith('Problem installing fixture')
+        )
+
 
 class NaturalKeyFixtureTests(TestCase):
-    def assertRaisesMessage(self, exc, msg, func, *args, **kwargs):
-        try:
-            func(*args, **kwargs)
-        except Exception, e:
-            self.assertEqual(msg, str(e))
-            self.assertTrue(isinstance(e, exc), "Expected %s, got %s" % (exc, type(e)))
 
     def test_nk_deserialize(self):
         """

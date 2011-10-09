@@ -1,28 +1,29 @@
 import copy
 import sys
-import types
 from functools import update_wrapper
 from itertools import izip
 
 import django.db.models.manager     # Imported to register signal handler.
-from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned, FieldError, ValidationError, NON_FIELD_ERRORS
+from django.conf import settings
+from django.core.exceptions import (ObjectDoesNotExist,
+    MultipleObjectsReturned, FieldError, ValidationError, NON_FIELD_ERRORS)
 from django.core import validators
 from django.db.models.fields import AutoField, FieldDoesNotExist
-from django.db.models.fields.related import (OneToOneRel, ManyToOneRel,
+from django.db.models.fields.related import (ManyToOneRel,
     OneToOneField, add_lazy_relation)
+from django.db import (connections, router, transaction, DatabaseError,
+    DEFAULT_DB_ALIAS)
 from django.db.models.query import Q
 from django.db.models.query_utils import DeferredAttribute
 from django.db.models.deletion import Collector
 from django.db.models.options import Options
-from django.db import (connections, router, transaction, DatabaseError,
-    DEFAULT_DB_ALIAS)
 from django.db.models import signals
 from django.db.models.loading import register_models, get_model
 from django.utils.translation import ugettext_lazy as _
 from django.utils.functional import curry
 from django.utils.encoding import smart_str, force_unicode
 from django.utils.text import get_text_list, capfirst
-from django.conf import settings
+
 
 class ModelBase(type):
     """
@@ -473,7 +474,6 @@ class Model(object):
         ('raw', 'cls', and 'origin').
         """
         using = using or router.db_for_write(self.__class__, instance=self)
-        connection = connections[using]
         assert not (force_insert and force_update)
         if cls is None:
             cls = self.__class__
@@ -539,24 +539,16 @@ class Model(object):
                     order_value = manager.using(using).filter(**{field.name: getattr(self, field.attname)}).count()
                     self._order = order_value
 
+                fields = meta.local_fields
                 if not pk_set:
                     if force_update:
                         raise ValueError("Cannot force an update in save() with no primary key.")
-                    values = [(f, f.get_db_prep_save(raw and getattr(self, f.attname) or f.pre_save(self, True), connection=connection))
-                        for f in meta.local_fields if not isinstance(f, AutoField)]
-                else:
-                    values = [(f, f.get_db_prep_save(raw and getattr(self, f.attname) or f.pre_save(self, True), connection=connection))
-                        for f in meta.local_fields]
+                    fields = [f for f in fields if not isinstance(f, AutoField)]
 
                 record_exists = False
 
                 update_pk = bool(meta.has_auto_field and not pk_set)
-                if values:
-                    # Create a new record.
-                    result = manager._insert(values, return_id=update_pk, using=using)
-                else:
-                    # Create a new record with defaults for everything.
-                    result = manager._insert([(meta.pk, connection.ops.pk_default_value())], return_id=update_pk, raw_values=True, using=using)
+                result = manager._insert([self], fields=fields, return_id=update_pk, using=using, raw=raw)
 
                 if update_pk:
                     setattr(self, meta.pk.attname, result)

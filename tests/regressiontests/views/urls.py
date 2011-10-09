@@ -1,7 +1,7 @@
 # coding: utf-8
 from os import path
 
-from django.conf.urls.defaults import *
+from django.conf.urls import patterns, url, include
 
 import views
 
@@ -39,8 +39,9 @@ urlpatterns = patterns('',
     (r'^server_error/', 'django.views.defaults.server_error'),
 
     # a view that raises an exception for the debug view
-    (r'^raises/$', views.raises),
-    (r'^raises404/$', views.raises404),
+    (r'raises/$', views.raises),
+    (r'raises404/$', views.raises404),
+    (r'raises403/$', views.raises403),
 
     # i18n views
     (r'^i18n/', include('django.conf.urls.i18n')),

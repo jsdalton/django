@@ -6,7 +6,7 @@ Requires cx_Oracle: http://cx-oracle.sourceforge.net/
 
 
 import datetime
-from decimal import Decimal
+import decimal
 import sys
 
 
@@ -78,6 +78,7 @@ class DatabaseFeatures(BaseDatabaseFeatures):
     supports_bitwise_or = False
     can_defer_constraint_checks = True
     ignores_nulls_in_unique_constraints = False
+    has_bulk_insert = True
 
 class DatabaseOperations(BaseDatabaseOperations):
     compiler_module = "django.db.backends.oracle.compiler"
@@ -372,6 +373,10 @@ WHEN (new.%(col_name)s IS NULL)
         name_length = self.max_name_length() - 3
         return '%s_TR' % util.truncate_name(table, name_length).upper()
 
+    def bulk_insert_sql(self, fields, num_values):
+        items_sql = "SELECT %s FROM DUAL" % ", ".join(["%s"] * len(fields))
+        return " UNION ALL ".join([items_sql] * num_values)
+
 
 class _UninitializedOperatorsDescriptor(object):
 
@@ -427,6 +432,14 @@ class DatabaseWrapper(BaseDatabaseWrapper):
         self.creation = DatabaseCreation(self)
         self.introspection = DatabaseIntrospection(self)
         self.validation = BaseDatabaseValidation(self)
+
+    def check_constraints(self, table_names=None):
+        """
+        To check constraints, we set constraints to immediate. Then, when, we're done we must ensure they
+        are returned to deferred.
+        """
+        self.cursor().execute('SET CONSTRAINTS ALL IMMEDIATE')
+        self.cursor().execute('SET CONSTRAINTS ALL DEFERRED')
 
     def _valid_connection(self):
         return self.connection is not None
@@ -730,7 +743,7 @@ def _rowfactory(row, cursor):
                     # This will normally be an integer from a sequence,
                     # but it could be a decimal value.
                     if '.' in value:
-                        value = Decimal(value)
+                        value = decimal.Decimal(value)
                     else:
                         value = int(value)
                 else:
@@ -743,12 +756,12 @@ def _rowfactory(row, cursor):
                 if scale == 0:
                     value = int(value)
                 else:
-                    value = Decimal(value)
+                    value = decimal.Decimal(value)
             elif '.' in value:
                 # No type information. This normally comes from a
                 # mathematical expression in the SELECT list. Guess int
                 # or Decimal based on whether it has a decimal point.
-                value = Decimal(value)
+                value = decimal.Decimal(value)
             else:
                 value = int(value)
         elif desc[1] in (Database.STRING, Database.FIXED_CHAR,

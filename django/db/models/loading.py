@@ -6,7 +6,6 @@ from django.utils.datastructures import SortedDict
 from django.utils.importlib import import_module
 from django.utils.module_loading import module_has_submodule
 
-import imp
 import sys
 import os
 import threading
@@ -147,6 +146,7 @@ class AppCache(object):
                     if mod is None:
                         if emptyOK:
                             return None
+                        raise ImproperlyConfigured("App with label %s is missing a models.py module." % app_label)
                     else:
                         return mod
             raise ImproperlyConfigured("App with label %s could not be found" % app_label)

@@ -12,7 +12,7 @@ from django.core.files import temp as tempfile
 from django.core.urlresolvers import reverse
 # Register auth models with the admin.
 from django.contrib.auth import REDIRECT_FIELD_NAME, admin
-from django.contrib.auth.models import User, Permission, UNUSABLE_PASSWORD
+from django.contrib.auth.models import Group, User, Permission, UNUSABLE_PASSWORD
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.admin.models import LogEntry, DELETION
 from django.contrib.admin.sites import LOGIN_FORM_KEY
@@ -32,13 +32,16 @@ from django.utils import unittest
 
 # local test models
 from models import (Article, BarAccount, CustomArticle, EmptyModel,
-    FooAccount, Gallery, PersonAdmin, ModelWithStringPrimaryKey,
+    FooAccount, Gallery, ModelWithStringPrimaryKey,
     Person, Persona, Picture, Podcast, Section, Subscriber, Vodcast,
     Language, Collector, Widget, Grommet, DooHickey, FancyDoodad, Whatsit,
     Category, Post, Plot, FunkyTag, Chapter, Book, Promo, WorkHour, Employee,
     Question, Answer, Inquisition, Actor, FoodDelivery,
     RowLevelChangePermissionModel, Paper, CoverLetter, Story, OtherStory,
     ComplexSortedPerson, Parent, Child)
+
+ERROR_MESSAGE = "Please enter the correct username and password \
+for a staff account. Note that both fields are case-sensitive."
 
 
 class AdminViewBasicTest(TestCase):
@@ -49,6 +52,8 @@ class AdminViewBasicTest(TestCase):
     # variable. That way we can test a second AdminSite just by subclassing
     # this test case and changing urlbit.
     urlbit = 'admin'
+
+    urls = "regressiontests.admin_views.urls"
 
     def setUp(self):
         self.old_USE_I18N = settings.USE_I18N
@@ -301,7 +306,7 @@ class AdminViewBasicTest(TestCase):
             response.content.index(link % l1.pk) < response.content.index(link % l2.pk)
         )
 
-    def testChangeListSortingModelAdmin(self):
+    def testChangeListSortingOverrideModelAdmin(self):
         # Test ordering on Model Admin is respected, and overrides Model Meta
         dt = datetime.datetime.now()
         p1 = Podcast.objects.create(name="A", release_date=dt)
@@ -410,6 +415,11 @@ class AdminViewBasicTest(TestCase):
         """Ensure incorrect lookup parameters are handled gracefully."""
         response = self.client.get('/test_admin/%s/admin_views/thing/' % self.urlbit, {'notarealfield': '5'})
         self.assertRedirects(response, '/test_admin/%s/admin_views/thing/?e=1' % self.urlbit)
+
+        # Spanning relationships through an inexistant related object (Refs #16716)
+        response = self.client.get('/test_admin/%s/admin_views/thing/' % self.urlbit, {'notarealfield__whatever': '5'})
+        self.assertRedirects(response, '/test_admin/%s/admin_views/thing/?e=1' % self.urlbit)
+
         response = self.client.get('/test_admin/%s/admin_views/thing/' % self.urlbit, {'color__id__exact': 'StringNotInteger!'})
         self.assertRedirects(response, '/test_admin/%s/admin_views/thing/?e=1' % self.urlbit)
 
@@ -537,6 +547,8 @@ class AdminViewBasicTest(TestCase):
             self.fail("Filters should be allowed if they are defined on a ForeignKey pointing to this model")
 
 class AdminJavaScriptTest(AdminViewBasicTest):
+    urls = "regressiontests.admin_views.urls"
+
     def testSingleWidgetFirsFieldFocus(self):
         """
         JavaScript-assisted auto-focus on first field.
@@ -560,6 +572,7 @@ class AdminJavaScriptTest(AdminViewBasicTest):
 
 
 class SaveAsTests(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml','admin-views-person.xml']
 
     def setUp(self):
@@ -585,9 +598,10 @@ class SaveAsTests(TestCase):
         self.assertTrue(response.context['save_as'])
         post_data = {'_saveasnew':'', 'name':'John M', 'gender':3, 'alive':'checked'}
         response = self.client.post('/test_admin/admin/admin_views/person/1/', post_data)
-        self.assertEqual(response.context['form_url'], '../add/')
+        self.assertEqual(response.context['form_url'], '/test_admin/admin/admin_views/person/add/')
 
 class CustomModelAdminTest(AdminViewBasicTest):
+    urls = "regressiontests.admin_views.urls"
     urlbit = "admin2"
 
     def testCustomAdminSiteLoginForm(self):
@@ -649,6 +663,7 @@ def get_perm(Model, perm):
 class AdminViewPermissionsTest(TestCase):
     """Tests for Admin Views Permissions."""
 
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml']
 
     def setUp(self):
@@ -749,12 +764,12 @@ class AdminViewPermissionsTest(TestCase):
         self.assertContains(login, "Your e-mail address is not your username")
         # only correct passwords get a username hint
         login = self.client.post('/test_admin/admin/', self.super_email_bad_login)
-        self.assertContains(login, "Please enter a correct username and password.")
+        self.assertContains(login, ERROR_MESSAGE)
         new_user = User(username='jondoe', password='secret', email='super@example.com')
         new_user.save()
         # check to ensure if there are multiple e-mail addresses a user doesn't get a 500
         login = self.client.post('/test_admin/admin/', self.super_email_login)
-        self.assertContains(login, "Please enter a correct username and password.")
+        self.assertContains(login, ERROR_MESSAGE)
 
         # Add User
         request = self.client.get('/test_admin/admin/')
@@ -785,7 +800,7 @@ class AdminViewPermissionsTest(TestCase):
         self.assertEqual(request.status_code, 200)
         login = self.client.post('/test_admin/admin/', self.joepublic_login)
         self.assertEqual(login.status_code, 200)
-        self.assertContains(login, "Please enter a correct username and password.")
+        self.assertContains(login, ERROR_MESSAGE)
 
         # Requests without username should not return 500 errors.
         request = self.client.get('/test_admin/admin/')
@@ -830,7 +845,7 @@ class AdminViewPermissionsTest(TestCase):
         self.client.post('/test_admin/admin/', self.adduser_login)
         addpage = self.client.get('/test_admin/admin/admin_views/article/add/')
         self.assertEqual(addpage.status_code, 200)
-        change_list_link = '<a href="../">Articles</a> &rsaquo;'
+        change_list_link = '&rsaquo; <a href="/test_admin/admin/admin_views/article/">Articles</a>'
         self.assertFalse(change_list_link in addpage.content,
                     'User restricted to add permission is given link to change list view in breadcrumbs.')
         post = self.client.post('/test_admin/admin/admin_views/article/add/', add_dict)
@@ -1050,6 +1065,7 @@ class AdminViewPermissionsTest(TestCase):
 
 
 class AdminViewDeletedObjectsTest(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml', 'deleted-objects.xml']
 
     def setUp(self):
@@ -1165,6 +1181,7 @@ class AdminViewDeletedObjectsTest(TestCase):
         self.assertContains(response, should_contain)
 
 class AdminViewStringPrimaryKeyTest(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml', 'string-primary-key.xml']
 
     def __init__(self, *args):
@@ -1256,6 +1273,7 @@ class AdminViewStringPrimaryKeyTest(TestCase):
 
 
 class SecureViewTests(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml']
 
     def setUp(self):
@@ -1345,12 +1363,12 @@ class SecureViewTests(TestCase):
         self.assertContains(login, "Your e-mail address is not your username")
         # only correct passwords get a username hint
         login = self.client.post('/test_admin/admin/secure-view/', self.super_email_bad_login)
-        self.assertContains(login, "Please enter a correct username and password.")
+        self.assertContains(login, ERROR_MESSAGE)
         new_user = User(username='jondoe', password='secret', email='super@example.com')
         new_user.save()
         # check to ensure if there are multiple e-mail addresses a user doesn't get a 500
         login = self.client.post('/test_admin/admin/secure-view/', self.super_email_login)
-        self.assertContains(login, "Please enter a correct username and password.")
+        self.assertContains(login, ERROR_MESSAGE)
 
         # Add User
         request = self.client.get('/test_admin/admin/secure-view/')
@@ -1382,7 +1400,7 @@ class SecureViewTests(TestCase):
         login = self.client.post('/test_admin/admin/secure-view/', self.joepublic_login)
         self.assertEqual(login.status_code, 200)
         # Login.context is a list of context dicts we just need to check the first one.
-        self.assertContains(login, "Please enter a correct username and password.")
+        self.assertContains(login, ERROR_MESSAGE)
 
         # 8509 - if a normal user is already logged in, it is possible
         # to change user into the superuser without error
@@ -1413,6 +1431,7 @@ class SecureViewTests(TestCase):
         self.assertEqual(response['Location'], 'http://example.com/users/super/')
 
 class AdminViewUnicodeTest(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-unicode.xml']
 
     def setUp(self):
@@ -1466,6 +1485,7 @@ class AdminViewUnicodeTest(TestCase):
 
 
 class AdminViewListEditable(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml', 'admin-views-person.xml']
 
     def setUp(self):
@@ -1822,6 +1842,7 @@ class AdminViewListEditable(TestCase):
 
 
 class AdminSearchTest(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users', 'multiple-child-classes',
                 'admin-views-person']
 
@@ -1868,6 +1889,7 @@ class AdminSearchTest(TestCase):
 
 
 class AdminInheritedInlinesTest(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml',]
 
     def setUp(self):
@@ -1953,6 +1975,7 @@ class AdminInheritedInlinesTest(TestCase):
         self.assertEqual(Persona.objects.all()[0].accounts.count(), 2)
 
 class AdminActionsTest(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml', 'admin-views-actions.xml']
 
     def setUp(self):
@@ -2174,6 +2197,7 @@ class AdminActionsTest(TestCase):
 
 
 class TestCustomChangeList(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml']
     urlbit = 'admin'
 
@@ -2201,6 +2225,7 @@ class TestCustomChangeList(TestCase):
 
 
 class TestInlineNotEditable(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml']
 
     def setUp(self):
@@ -2218,6 +2243,7 @@ class TestInlineNotEditable(TestCase):
         self.assertEqual(response.status_code, 200)
 
 class AdminCustomQuerysetTest(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml']
 
     def setUp(self):
@@ -2272,6 +2298,7 @@ class AdminCustomQuerysetTest(TestCase):
         self.assertContains(response, '<li class="info">The cover letter &quot;John Doe II&quot; was changed successfully.</li>')
 
 class AdminInlineFileUploadTest(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml', 'admin-views-actions.xml']
     urlbit = 'admin'
 
@@ -2317,6 +2344,7 @@ class AdminInlineFileUploadTest(TestCase):
 
 
 class AdminInlineTests(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml']
 
     def setUp(self):
@@ -2634,6 +2662,7 @@ class AdminInlineTests(TestCase):
 
 
 class NeverCacheTests(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml', 'admin-views-colors.xml', 'admin-views-fabrics.xml']
 
     def setUp(self):
@@ -2706,6 +2735,7 @@ class NeverCacheTests(TestCase):
 
 
 class PrePopulatedTest(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml']
 
     def setUp(self):
@@ -2730,6 +2760,7 @@ class PrePopulatedTest(TestCase):
         self.assertNotContains(response, "id: '#id_prepopulatedsubpost_set-0-subslug',")
 
 class ReadonlyTest(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml']
 
     def setUp(self):
@@ -2797,6 +2828,7 @@ class ReadonlyTest(TestCase):
 
 
 class RawIdFieldsTest(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml']
 
     def setUp(self):
@@ -2832,6 +2864,7 @@ class UserAdminTest(TestCase):
     """
     Tests user CRUD functionality.
     """
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml']
 
     def setUp(self):
@@ -2911,6 +2944,45 @@ class UserAdminTest(TestCase):
         self.assertEqual(User.objects.count(), user_count + 1)
         self.assertNotEqual(new_user.password, UNUSABLE_PASSWORD)
 
+    def test_user_permission_performance(self):
+        u = User.objects.all()[0]
+
+        with self.assertNumQueries(7):
+            response = self.client.get('/test_admin/admin/auth/user/%s/' % u.pk)
+            self.assertEqual(response.status_code, 200)
+
+
+class GroupAdminTest(TestCase):
+    """
+    Tests group CRUD functionality.
+    """
+    urls = "regressiontests.admin_views.urls"
+    fixtures = ['admin-views-users.xml']
+
+    def setUp(self):
+        self.client.login(username='super', password='secret')
+
+    def tearDown(self):
+        self.client.logout()
+
+    def test_save_button(self):
+        group_count = Group.objects.count()
+        response = self.client.post('/test_admin/admin/auth/group/add/', {
+            'name': 'newgroup',
+        })
+
+        new_group = Group.objects.order_by('-id')[0]
+        self.assertRedirects(response, '/test_admin/admin/auth/group/')
+        self.assertEqual(Group.objects.count(), group_count + 1)
+
+    def test_group_permission_performance(self):
+        g = Group.objects.create(name="test_group")
+
+        with self.assertNumQueries(6):  # instead of 259!
+            response = self.client.get('/test_admin/admin/auth/group/%s/' % g.pk)
+            self.assertEqual(response.status_code, 200)
+
+
 try:
     import docutils
 except ImportError:
@@ -2918,6 +2990,7 @@ except ImportError:
 
 #@unittest.skipUnless(docutils, "no docutils installed.")
 class AdminDocsTest(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml']
 
     def setUp(self):
@@ -2960,6 +3033,7 @@ class AdminDocsTest(TestCase):
 AdminDocsTest = unittest.skipUnless(docutils, "no docutils installed.")(AdminDocsTest)
 
 class ValidXHTMLTests(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml']
     urlbit = 'admin'
 
@@ -2990,6 +3064,7 @@ class ValidXHTMLTests(TestCase):
 
 
 class DateHierarchyTests(TestCase):
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml']
 
     def setUp(self):
@@ -3119,6 +3194,7 @@ class AdminCustomSaveRelatedTests(TestCase):
     Ensure that one can easily customize the way related objects are saved.
     Refs #16115.
     """
+    urls = "regressiontests.admin_views.urls"
     fixtures = ['admin-views-users.xml']
 
     def setUp(self):
@@ -3156,6 +3232,25 @@ class AdminCustomSaveRelatedTests(TestCase):
         }
         response = self.client.post('/test_admin/admin/admin_views/parent/%s/' % parent.id, post)
 
+        children_names = list(Child.objects.order_by('name').values_list('name', flat=True))
+
+        self.assertEqual('Josh Stone', Parent.objects.latest('id').name)
+        self.assertEqual([u'Catherine Stone', u'Paul Stone'], children_names)
+
+    def test_should_be_able_to_edit_related_objects_on_changelist_view(self):
+        parent = Parent.objects.create(name='Josh Rock')
+        paul = Child.objects.create(parent=parent, name='Paul')
+        catherine = Child.objects.create(parent=parent, name='Catherine')
+        post = {
+            'form-TOTAL_FORMS': '1',
+            'form-INITIAL_FORMS': '1',
+            'form-MAX_NUM_FORMS': '0',
+            'form-0-id': parent.id,
+            'form-0-name': 'Josh Stone',
+            '_save': 'Save'
+        }
+
+        response = self.client.post('/test_admin/admin/admin_views/parent/', post)
         children_names = list(Child.objects.order_by('name').values_list('name', flat=True))
 
         self.assertEqual('Josh Stone', Parent.objects.latest('id').name)

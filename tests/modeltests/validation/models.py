@@ -1,7 +1,6 @@
 from datetime import datetime
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.test import TestCase
 
 
 def validate_answer_to_universe(value):
@@ -15,6 +14,7 @@ class ModelToValidate(models.Model):
     parent = models.ForeignKey('self', blank=True, null=True, limit_choices_to={'number': 10})
     email = models.EmailField(blank=True)
     url = models.URLField(blank=True)
+    url_verify = models.URLField(blank=True, verify_exists=True)
     f_with_custom_validator = models.IntegerField(blank=True, null=True, validators=[validate_answer_to_universe])
 
     def clean(self):
