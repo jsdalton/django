@@ -894,11 +894,11 @@ class FileBasedCacheTests(unittest.TestCase, BaseCacheTests):
         self.assertTrue(not os.path.exists(os.path.dirname(os.path.dirname(keypath))))
 
     def test_cull(self):
-        self.perform_cull_test(50, 29)
+        self.perform_cull_test(50, 28)
 
     def test_old_initialization(self):
         self.cache = get_cache('file://%s?max_entries=30' % self.dirname)
-        self.perform_cull_test(50, 29)
+        self.perform_cull_test(50, 28)
 
 class CustomCacheKeyValidationTests(unittest.TestCase):
     """
