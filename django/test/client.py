@@ -17,8 +17,11 @@ from django.core.handlers.base import BaseHandler
 from django.core.handlers.wsgi import WSGIRequest
 from django.core.signals import got_request_exception
 from django.http import SimpleCookie, HttpRequest, QueryDict
+from django.middleware.cache import (UpdateCacheMiddleware,
+         FetchFromCacheMiddleware, CacheMiddleware)
 from django.template import TemplateDoesNotExist
 from django.test import signals
+from django.test.utils import modified_get_cache
 from django.utils.functional import curry
 from django.utils.encoding import smart_str
 from django.utils.http import urlencode
@@ -62,6 +65,7 @@ class ClientHandler(BaseHandler):
     """
     def __init__(self, enforce_csrf_checks=True, *args, **kwargs):
         self.enforce_csrf_checks = enforce_csrf_checks
+        self._caches_replaced = False
         super(ClientHandler, self).__init__(*args, **kwargs)
 
     def __call__(self, environ):
@@ -81,6 +85,10 @@ class ClientHandler(BaseHandler):
             # required for backwards compatibility with external tests against
             # admin views.
             request._dont_enforce_csrf_checks = not self.enforce_csrf_checks
+
+            # Ensure cache middleware uses resetable cache for testing
+            if not self._caches_replaced:
+                self.replace_cache_in_cache_middleware()
             response = self.get_response(request)
         finally:
             signals.request_finished.disconnect(close_connection)
@@ -88,6 +96,22 @@ class ClientHandler(BaseHandler):
             signals.request_finished.connect(close_connection)
 
         return response
+
+    def replace_cache_in_cache_middleware(self):
+        """
+        Iterate over loaded cache middleware and replace cache with modified
+        cache (so it can be reset between tests).
+        """
+        cache_middleware_classes = [
+            UpdateCacheMiddleware, FetchFromCacheMiddleware, CacheMiddleware
+        ]
+        mw_methods = set(self._request_middleware + self._response_middleware)
+        for mw_method in mw_methods:
+            mw_instance = mw_method.im_self
+            if any([issubclass(type(mw_instance), cls) for cls in cache_middleware_classes]):
+                mw_instance._original_cache = mw_instance.cache
+                mw_instance.cache = modified_get_cache(mw_instance.cache_alias)
+        self._caches_replaced = True
 
 def store_rendered_templates(store, signal, sender, template, context, **kwargs):
     """

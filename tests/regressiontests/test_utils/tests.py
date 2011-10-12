@@ -3,6 +3,7 @@ from __future__ import with_statement
 import tempfile
 from django.forms import EmailField
 from django.test import SimpleTestCase, TestCase, skipUnlessDBFeature
+from django.test.utils import override_settings
 from django.utils.unittest import skip, skipUnless
 from django.conf import settings
 from django.core import management
@@ -307,6 +308,47 @@ class MemcachedCacheResetTests(BaseCacheReset, CacheResetTestsMixin):
 
     def modified_cache(self):
         return get_cache(self.backend_name, LOCATION=self.memcached_location)
+
+
+class CacheMiddlewareTestingTests(TestCase):
+    """
+    CacheMiddleware caches should be reset between tests to avoid broken test
+    client when views are cached.
+    """
+    urls = 'regressiontests.test_utils.urls'
+
+    def test_a_request_cached_in_view(self):
+        """A simple view, which gets cached by cache middleware"""
+        response = self.client.get("/test_utils/simple_view/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["foo"], "bar")
+
+    def test_b_request_cached_in_view(self):
+        """
+        This test runs after test_a above, and assures that the view is not
+        being cached between tests.
+        """
+        response = self.client.get("/test_utils/simple_view/")
+        self.assertEqual(response.status_code, 200)
+
+        # These assertions fail if the cache from test_a is carried over, since
+        # the cached response doesn't have a context
+        self.assertTrue(response.context)
+        self.assertEqual(response.context["foo"], "bar")
+
+CacheMiddlewareTestingTests = override_settings(
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'
+        },
+    },
+    CACHE_MIDDLEWARE_SECONDS=30,
+    MIDDLEWARE_CLASSES = (
+        'django.middleware.cache.UpdateCacheMiddleware',
+        'django.middleware.common.CommonMiddleware',
+        'django.middleware.cache.FetchFromCacheMiddleware',
+    )
+)(CacheMiddlewareTestingTests)
 
 
 class AssertRaisesMsgTest(SimpleTestCase):
