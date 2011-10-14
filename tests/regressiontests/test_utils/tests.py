@@ -6,12 +6,7 @@ from django.test import TestCase, SimpleTestCase, skipUnlessDBFeature
 from django.test.testcases import ignore_num_queries
 from django.utils.unittest import skip
 
-<<<<<<< HEAD
-
-from models import Person, Pet
-=======
-from .models import Person
->>>>>>> upstream/master
+from .models import Person, Pet
 
 
 class SkippingTestCase(TestCase):

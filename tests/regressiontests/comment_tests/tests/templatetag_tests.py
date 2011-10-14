@@ -47,12 +47,6 @@ class CommentTemplateTagTests(CommentTestCase):
     def testRenderCommentFormFromObjectWithQueryCount(self):
         with self.assertNumQueries(1):
             self.testRenderCommentFormFromObject()
-<<<<<<< HEAD
-        # 1 to select object
-        # 1 to get the contenttype
-        self.assertNumQueries(2, test)
-=======
->>>>>>> upstream/master
 
     def verifyGetCommentCount(self, tag=None):
         t = "{% load comments %}" + (tag or "{% get_comment_count for comment_tests.article a.id as cc %}") + "{{ cc }}"
