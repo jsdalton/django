@@ -21,8 +21,9 @@ from django.utils.translation import (ugettext, ugettext_lazy, activate,
     deactivate, gettext_lazy, pgettext, npgettext, to_locale,
     get_language_info, get_language, get_language_from_request)
 
+# Keep as a * import because of conditional imports in .commands.tests
+from .commands.tests import *
 
-from .commands.tests import NoWrapExtractorTests, IgnoredExtractorTests, MessageCompilationTests, PoFileTests, BasicExtractorTests, JavascriptExtractorTests, CopyPluralFormsExtractorTests, SymlinkExtractorTests, ExtractorTests
 from .contenttypes.tests import ContentTypeTests
 from .forms import I18nForm, SelectDateForm, SelectDateWidget, CompanyForm
 from .models import Company, TestModel
