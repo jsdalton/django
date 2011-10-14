@@ -52,6 +52,33 @@ matched by a ``FOR UPDATE`` query.
 For more details, see the documentation for
 :meth:`~django.db.models.query.QuerySet.select_for_update`.
 
+``Model.objects.bulk_create`` in the ORM
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This method allows for more efficient creation of multiple objects in the ORM.
+It can provide significant performance increases if you have many objects,
+Django makes use of this internally, meaning some operations (such as database
+setup for test suites) has seen a performance benefit as a result.
+
+See the :meth:`~django.db.models.query.QuerySet.bulk_create` docs for more
+information.
+
+``QuerySet.prefetch_related``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Similar to :meth:`~django.db.models.query.QuerySet.select_related` but with a
+different strategy and broader scope,
+:meth:`~django.db.models.query.QuerySet.prefetch_related` has been added to
+:class:`~django.db.models.query.QuerySet`. This method returns a new
+``QuerySet`` that will prefetch in a single batch each of the specified related
+lookups as soon as it begins to be evaluated. Unlike ``select_related``, it does
+the joins in Python, not in the database, and supports many-to-many
+relationships, :class:`~django.contrib.contenttypes.generic.GenericForeignKey`
+and more. This enables you to fix many instances of a very common performance
+problem, in which your code ends up doing O(n) database queries (or worse) if
+objects on your primary ``QuerySet`` each have many related objects that you
+also need.
+
 HTML5
 ~~~~~
 
@@ -104,6 +131,15 @@ A new :meth:`~django.contrib.admin.ModelAdmin.save_related` hook was added to
 :mod:`~django.contrib.admin.ModelAdmin` to ease the customization of how
 related objects are saved in the admin.
 
+Admin inlines respect user permissions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Admin inlines will now only allow those actions for which the user has
+permission. For ``ManyToMany`` relationships with an auto-created intermediate
+model (which does not have its own permissions), the change permission for the
+related model determines if the user has the permission to add, change or
+delete relationships.
+
 Tools for cryptographic signing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -139,36 +175,21 @@ Django 1.4 to store the wizard state in the user's cookies.
 See the :doc:`form wizard </ref/contrib/formtools/form-wizard>` docs for
 more information.
 
-Simple clickjacking protection
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-We've added a middleware to provide easy protection against `clickjacking
-<http://en.wikipedia.org/wiki/Clickjacking>`_ using the X-Frame-Options
-header. It's not enabled by default for backwards compatibility reasons, but
-you'll almost certainly want to :doc:`enable it </ref/clickjacking/>` to help
-plug that security hole for browsers that support the header.
-
 ``reverse_lazy``
 ~~~~~~~~~~~~~~~~
 
 A lazily evaluated version of :func:`django.core.urlresolvers.reverse` was
 added to allow using URL reversals before the project's URLConf gets loaded.
 
-Assignment template tags
+Translating URL patterns
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-A new helper function,
-:ref:`assignment_tag<howto-custom-template-tags-assignment-tags>`, was added to
-``template.Library`` to ease the creation of template tags that store some
-data in a specified context variable.
-
-``truncatechars`` template filter
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Added a filter which truncates a string to be no longer than the specified
-number of characters. Truncated strings end with a translatable ellipsis
-sequence ("..."). See the :tfilter:`truncatechars docs <truncatechars>` for
-more details.
+Django 1.4 gained the ability to look for a language prefix in the URL pattern
+when using the new :func:`django.conf.urls.i18n.i18n_patterns` helper function.
+Additionally, it's now possible to define translatable URL patterns using
+:func:`~django.utils.translation.ugettext_lazy`. See
+:ref:`url-internationalization` for more information about the language prefix
+and how to internationalize URL patterns.
 
 Customizable ``SingleObjectMixin`` URLConf kwargs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -179,6 +200,94 @@ Two new attributes,
 have been added to :class:`django.views.generic.detail.SingleObjectMixin` to
 enable the customization of URLConf keyword arguments used for single
 object generic views.
+
+Assignment template tags
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+A new helper function,
+:ref:`assignment_tag<howto-custom-template-tags-assignment-tags>`, was added to
+``template.Library`` to ease the creation of template tags that store some
+data in a specified context variable.
+
+``*args`` and ``**kwargs`` support for template tag helper functions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:ref:`simple_tag<howto-custom-template-tags-simple-tags>`, :ref:`inclusion_tag
+<howto-custom-template-tags-inclusion-tags>` and the newly introduced
+:ref:`assignment_tag<howto-custom-template-tags-assignment-tags>` template
+helper functions may now accept any number of positional or keyword arguments.
+For example:
+
+.. code-block:: python
+
+    @register.simple_tag
+    def my_tag(a, b, *args, **kwargs):
+        warning = kwargs['warning']
+        profile = kwargs['profile']
+        ...
+        return ...
+
+Then in the template any number of arguments may be passed to the template tag.
+For example:
+
+.. code-block:: html+django
+
+    {% my_tag 123 "abcd" book.title warning=message|lower profile=user.profile %}
+
+No wrapping of exceptions in ``TEMPLATE_DEBUG`` mode
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In previous versions of Django, whenever the :setting:`TEMPLATE_DEBUG` setting
+was ``True``, any exception raised during template rendering (even exceptions
+unrelated to template syntax) were wrapped in ``TemplateSyntaxError`` and
+re-raised. This was done in order to provide detailed template source location
+information in the debug 500 page.
+
+In Django 1.4, exceptions are no longer wrapped. Instead, the original
+exception is annotated with the source information. This means that catching
+exceptions from template rendering is now consistent regardless of the value of
+:setting:`TEMPLATE_DEBUG`, and there's no need to catch and unwrap
+``TemplateSyntaxError`` in order to catch other errors.
+
+``truncatechars`` template filter
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Added a filter which truncates a string to be no longer than the specified
+number of characters. Truncated strings end with a translatable ellipsis
+sequence ("..."). See the :tfilter:`truncatechars docs <truncatechars>` for
+more details.
+
+``static`` template tag
+~~~~~~~~~~~~~~~~~~~~~~~
+
+The :mod:`staticfiles<django.contrib.staticfiles>` contrib app has now a new
+:ttag:`static template tag<staticfiles-static>` to refer to files saved with
+the :setting:`STATICFILES_STORAGE` storage backend. It'll use the storage
+``url`` method and therefore supports advanced features such as
+:ref:`serving files from a cloud service<staticfiles-from-cdn>`.
+
+``CachedStaticFilesStorage`` storage backend
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Additional to the `static template tag`_ the
+:mod:`staticfiles<django.contrib.staticfiles>` contrib app now has a
+:class:`~django.contrib.staticfiles.storage.CachedStaticFilesStorage` which
+caches the files it saves (when running the :djadmin:`collectstatic`
+management command) by appending the MD5 hash of the file's content to the
+filename. For example, the file ``css/styles.css`` would also be saved as
+``css/styles.55e7cbb9ba48.css``
+
+See the :class:`~django.contrib.staticfiles.storage.CachedStaticFilesStorage`
+docs for more information.
+
+Simple clickjacking protection
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+We've added a middleware to provide easy protection against `clickjacking
+<http://en.wikipedia.org/wiki/Clickjacking>`_ using the X-Frame-Options
+header. It's not enabled by default for backwards compatibility reasons, but
+you'll almost certainly want to :doc:`enable it </ref/clickjacking/>` to help
+plug that security hole for browsers that support the header.
 
 CSRF improvements
 ~~~~~~~~~~~~~~~~~
@@ -219,64 +328,71 @@ a :class:`~django.forms.fields.GenericIPAddressField` form field and
 the validators :data:`~django.core.validators.validate_ipv46_address` and
 :data:`~django.core.validators.validate_ipv6_address`
 
-Translating URL patterns
-~~~~~~~~~~~~~~~~~~~~~~~~
+Updated default project layout and ``manage.py``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Django 1.4 gained the ability to look for a language prefix in the URL pattern
-when using the new :func:`django.conf.urls.i18n.i18n_patterns` helper function.
-Additionally, it's now possible to define translatable URL patterns using
-:func:`~django.utils.translation.ugettext_lazy`. See
-:ref:`url-internationalization` for more information about the language prefix
-and how to internationalize URL patterns.
+Django 1.4 ships with an updated default project layout and ``manage.py`` file
+for the :djadmin:`startproject` management command. These fix some issues with
+the previous ``manage.py`` handling of Python import paths that caused double
+imports, trouble moving from development to deployment, and other
+difficult-to-debug path issues.
 
-``static`` template tag
-~~~~~~~~~~~~~~~~~~~~~~~
+The previous ``manage.py`` calls functions that are now deprecated, and thus
+projects upgrading to Django 1.4 should update their ``manage.py``. (The
+old-style ``manage.py`` will continue to work as before until Django 1.6; in
+1.5 it will raise ``DeprecationWarning``).
 
-The :mod:`staticfiles<django.contrib.staticfiles>` contrib app has now a new
-:ttag:`static template tag<staticfiles-static>` to refer to files saved with
-the :setting:`STATICFILES_STORAGE` storage backend. It'll use the storage
-``url`` method and therefore supports advanced features such as
-:ref:`serving files from a cloud service<staticfiles-from-cdn>`.
+The new recommended ``manage.py`` file should look like this::
 
-``CachedStaticFilesStorage`` storage backend
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #!/usr/bin/env python
+    import os, sys
 
-Additional to the `static template tag`_ the
-:mod:`staticfiles<django.contrib.staticfiles>` contrib app now has a
-:class:`~django.contrib.staticfiles.storage.CachedStaticFilesStorage` which
-caches the files it saves (when running the :djadmin:`collectstatic`
-management command) by appending the MD5 hash of the file's content to the
-filename. For example, the file ``css/styles.css`` would also be saved as
-``css/styles.55e7cbb9ba48.css``
+    if __name__ == "__main__":
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "{{ project_name }}.settings")
 
-See the :class:`~django.contrib.staticfiles.storage.CachedStaticFilesStorage`
-docs for more information.
+        from django.core.management import execute_from_command_line
 
-``Model.objects.bulk_create`` in the ORM
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        execute_from_command_line(sys.argv)
 
-This method allows for more efficient creation of multiple objects in the ORM.
-It can provide significant performance increases if you have many objects,
-Django makes use of this internally, meaning some operations (such as database
-setup for test suites) has seen a performance benefit as a result.
+``{{ project_name }}`` should be replaced with the Python package name of the
+actual project.
 
-See the :meth:`~django.db.models.query.QuerySet.bulk_create` docs for more
-information.
+If settings, URLconf, and apps within the project are imported or referenced
+using the project-name prefix (e.g. ``myproject.settings``, ``ROOT_URLCONF =
+"myproject.urls"``, etc), the new ``manage.py`` will need to be moved one
+directory up, so it is outside the project package rather than adjacent to
+``settings.py`` and ``urls.py``.
 
-No wrapping of exceptions in ``TEMPLATE_DEBUG`` mode
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+For instance, with the following layout::
 
-In previous versions of Django, whenever the :setting:`TEMPLATE_DEBUG` setting
-was ``True``, any exception raised during template rendering (even exceptions
-unrelated to template syntax) were wrapped in ``TemplateSyntaxError`` and
-re-raised. This was done in order to provide detailed template source location
-information in the debug 500 page.
+    manage.py
+    mysite/
+        __init__.py
+        settings.py
+        urls.py
+        myapp/
+            __init__.py
+            models.py
 
-In Django 1.4, exceptions are no longer wrapped. Instead, the original
-exception is annotated with the source information. This means that catching
-exceptions from template rendering is now consistent regardless of the value of
-:setting:`TEMPLATE_DEBUG`, and there's no need to catch and unwrap
-``TemplateSyntaxError`` in order to catch other errors.
+You could import ``mysite.settings``, ``mysite.urls``, and ``mysite.myapp``,
+but not ``settings``, ``urls``, or ``myapp`` as top-level modules.
+
+Anything imported as a top-level module can be placed adjacent to the new
+``manage.py``. For instance, to decouple "myapp" from the project module and
+import it as just ``myapp``, place it outside the ``mysite/`` directory::
+
+    manage.py
+    myapp/
+        __init__.py
+        models.py
+    mysite/
+        __init__.py
+        settings.py
+        urls.py
+
+If the same code is imported inconsistently (some places with the project
+prefix, some places without it), the imports will need to be cleaned up when
+switching to the new ``manage.py``.
 
 
 Minor features
@@ -314,6 +430,17 @@ Django 1.4 also includes several smaller improvements worth noting:
 * The :ttag:`trans` template tag now takes an optional ``as`` argument to
   be able to retrieve a translation string without displaying it but setting
   a template context variable instead.
+
+* A new plain text version of the HTTP 500 status code internal error page
+  served when :setting:`DEBUG` is ``True`` is now sent to the client when
+  Django detects that the request has originated in JavaScript code
+  (:meth:`~django.http.HttpRequest.is_ajax` is used for this).
+
+  Similarly to its HTML counterpart, it contains a collection of different
+  pieces of information about the state of the web application.
+
+  This should make it easier to read when debugging interaction with
+  client-side Javascript code.
 
 .. _backwards-incompatible-changes-1.4:
 
@@ -360,13 +487,26 @@ Removed admin icons
 ~~~~~~~~~~~~~~~~~~~
 
 As part of an effort to improve the performance and usability of the admin's
-vertical and horizontal "filter" widgets, some icon files were removed and
-grouped into a single sprite file (``selector-icons.gif``):
+changelist sorting interface and of the admin's :attr:`horizontal
+<django.contrib.admin.ModelAdmin.filter_horizontal>` and :attr:`vertical
+<django.contrib.admin.ModelAdmin.filter_vertical>` "filter" widgets, some icon
+files were removed and grouped into two sprite files, respectively:
 ``selector-add.gif``, ``selector-addall.gif``, ``selector-remove.gif``,
 ``selector-removeall.gif``, ``selector_stacked-add.gif`` and
-``selector_stacked-remove.gif``. If you used those icons to customize the
-admin then you will want to replace them with your own icons or retrieve them
-from a previous release.
+``selector_stacked-remove.gif`` into ``selector-icons.gif``; and
+``arrow-up.gif`` and ``arrow-down.gif`` into ``sorting-icons.gif``. If you used
+those icons to customize the admin then you will want to replace them with your
+own icons or retrieve them from a previous release.
+
+CSS class names in admin forms
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To avoid conflicts with other common CSS class names (e.g. "button"), a prefix
+"field-" has been added to all CSS class names automatically generated from the
+form field names in the main admin forms, stacked inline forms and tabular
+inline cells. You will need to take that prefix into account in your custom
+style sheets or javascript files if you previously used plain field names as
+selectors for custom styles or javascript transformations.
 
 Compatibility with old signed data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -656,3 +796,26 @@ The code that powers Databrowse is licensed under the same terms as Django
 itself, and so is available to be adopted by an individual or group as
 a third-party project.
 
+``django.core.management.setup_environ``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This function temporarily modified ``sys.path`` in order to make the parent
+"project" directory importable under the old flat :djadmin:`startproject`
+layout. This function is now deprecated, as its path workarounds are no longer
+needed with the new ``manage.py`` and default project layout.
+
+This function was never documented or public API, but was widely recommended
+for use in setting up a "Django environment" for a user script. These uses
+should be replaced by setting the ``DJANGO_SETTINGS_MODULE`` environment
+variable or using :func:`django.conf.settings.configure`.
+
+``django.core.management.execute_manager``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This function was previously used by ``manage.py`` to execute a management
+command. It is identical to
+``django.core.management.execute_from_command_line``, except that it first
+calls ``setup_environ``, which is now deprecated. ``execute_manager`` is also
+deprecated; ``execute_from_command_line`` can be used instead. (Neither of
+these functions is documented public API, but a deprecation path is needed due
+to use in existing ``manage.py`` files.)

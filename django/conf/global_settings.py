@@ -143,6 +143,9 @@ SEND_BROKEN_LINK_EMAILS = False
 
 # Database connection info.
 DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.dummy',
+    },
 }
 
 # Classes used to implement db routing behaviour
@@ -455,8 +458,8 @@ CACHE_MIDDLEWARE_ALIAS = 'default'
 
 COMMENTS_ALLOW_PROFANITIES = False
 
-# The profanities that will trigger a validation error in the
-# 'hasNoProfanities' validator. All of these should be in lowercase.
+# The profanities that will trigger a validation error in
+# CommentDetailsForm.clean_comment. All of these should be in lowercase.
 PROFANITIES_LIST = ()
 
 ##################

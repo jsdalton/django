@@ -49,11 +49,6 @@ language. Message files have a ``.po`` file extension.
 Django comes with a tool, ``django-admin.py makemessages``, that automates the
 creation and upkeep of these files.
 
-.. admonition:: A note to Django veterans
-
-    The old tool ``bin/make-messages.py`` has been moved to the command
-    ``django-admin.py makemessages`` to provide consistency throughout Django.
-
 .. admonition:: Gettext utilities
 
     The ``makemessages`` command (and ``compilemessages`` discussed later) use
@@ -75,8 +70,8 @@ German.
 
 The script should be run from one of two places:
 
-    * The root directory of your Django project.
-    * The root directory of your Django app.
+* The root directory of your Django project.
+* The root directory of your Django app.
 
 The script runs over your project source tree or your application source tree
 and pulls out all strings marked for translation. It creates (or updates) a
@@ -133,14 +128,14 @@ containing the following snippet -- a message::
 
 A quick explanation:
 
-    * ``msgid`` is the translation string, which appears in the source. Don't
-      change it.
-    * ``msgstr`` is where you put the language-specific translation. It starts
-      out empty, so it's your responsibility to change it. Make sure you keep
-      the quotes around your translation.
-    * As a convenience, each message includes, in the form of a comment line
-      prefixed with ``#`` and located above the ``msgid`` line, the filename and
-      line number from which the translation string was gleaned.
+* ``msgid`` is the translation string, which appears in the source. Don't
+  change it.
+* ``msgstr`` is where you put the language-specific translation. It starts
+  out empty, so it's your responsibility to change it. Make sure you keep
+  the quotes around your translation.
+* As a convenience, each message includes, in the form of a comment line
+  prefixed with ``#`` and located above the ``msgid`` line, the filename and
+  line number from which the translation string was gleaned.
 
 Long messages are a special case. There, the first string directly after the
 ``msgstr`` (or ``msgid``) is an empty string. Then the content itself will be
@@ -179,12 +174,6 @@ compilemessages`` like this::
 
 That's it. Your translations are ready for use.
 
-.. admonition:: A note to Django veterans
-
-    The old tool ``bin/compile-messages.py`` has been moved to the command
-    ``django-admin.py compilemessages`` to provide consistency throughout
-    Django.
-
 .. admonition:: Working on Windows?
 
    If you're using Windows and need to install the GNU gettext utilities so
@@ -202,9 +191,11 @@ That's it. Your translations are ready for use.
 Creating message files from JavaScript source code
 ==================================================
 
-You create and update the message files the same way as the other Django message
-files -- with the ``django-admin.py makemessages`` tool. The only difference is
-you need to provide a ``-d djangojs`` parameter, like this::
+You create and update the message files the same way as the other Django
+message files -- with the ``django-admin.py makemessages`` tool. The only
+difference is you need to explicitly specify what in gettext parlance is known
+as a domain in this case the ``djangojs`` domain, by providing a ``-d djangojs``
+parameter, like this::
 
     django-admin.py makemessages -d djangojs -l de
 
@@ -222,24 +213,24 @@ message files (``.po``). Translation work itself just involves editing existing
 files of this type, but if you want to create your own message files, or want to
 test or compile a changed message file, you will need the ``gettext`` utilities:
 
-    * Download the following zip files from the GNOME servers
-      http://ftp.gnome.org/pub/gnome/binaries/win32/dependencies/ or from one
-      of its mirrors_
+* Download the following zip files from the GNOME servers
+  http://ftp.gnome.org/pub/gnome/binaries/win32/dependencies/ or from one
+  of its mirrors_
 
-      * ``gettext-runtime-X.zip``
-      * ``gettext-tools-X.zip``
+  * ``gettext-runtime-X.zip``
+  * ``gettext-tools-X.zip``
 
-      ``X`` is the version number, we are requiring ``0.15`` or higher.
+  ``X`` is the version number, we are requiring ``0.15`` or higher.
 
-    * Extract the contents of the ``bin\`` directories in both files to the
-      same folder on your system (i.e. ``C:\Program Files\gettext-utils``)
+* Extract the contents of the ``bin\`` directories in both files to the
+  same folder on your system (i.e. ``C:\Program Files\gettext-utils``)
 
-    * Update the system PATH:
+* Update the system PATH:
 
-      * ``Control Panel > System > Advanced > Environment Variables``.
-      * In the ``System variables`` list, click ``Path``, click ``Edit``.
-      * Add ``;C:\Program Files\gettext-utils\bin`` at the end of the
-        ``Variable value`` field.
+  * ``Control Panel > System > Advanced > Environment Variables``.
+  * In the ``System variables`` list, click ``Path``, click ``Edit``.
+  * Add ``;C:\Program Files\gettext-utils\bin`` at the end of the
+    ``Variable value`` field.
 
 .. _mirrors: http://ftp.gnome.org/pub/GNOME/MIRRORS
 

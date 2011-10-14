@@ -1,5 +1,5 @@
 # coding: utf-8
-from __future__ import with_statement
+from __future__ import with_statement, absolute_import
 
 import re
 import datetime
@@ -11,38 +11,36 @@ from django.core.exceptions import SuspiciousOperation
 from django.core.files import temp as tempfile
 from django.core.urlresolvers import reverse
 # Register auth models with the admin.
-from django.contrib.auth import REDIRECT_FIELD_NAME, admin
-from django.contrib.auth.models import Group, User, Permission, UNUSABLE_PASSWORD
-from django.contrib.contenttypes.models import ContentType
+from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.admin.models import LogEntry, DELETION
 from django.contrib.admin.sites import LOGIN_FORM_KEY
 from django.contrib.admin.util import quote
-from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.contrib.admin.views.main import IS_POPUP_VAR
+from django.contrib.auth import REDIRECT_FIELD_NAME, admin
+from django.contrib.auth.models import Group, User, Permission, UNUSABLE_PASSWORD
+from django.contrib.contenttypes.models import ContentType
 from django.forms.util import ErrorList
-import django.template.context
+from django.template import context as context_module
 from django.template.response import TemplateResponse
 from django.test import TestCase
-from django.utils import formats, translation
+from django.utils import formats, translation, unittest
 from django.utils.cache import get_max_age
 from django.utils.encoding import iri_to_uri
 from django.utils.html import escape
 from django.utils.http import urlencode
-from django.utils import unittest
 
 # local test models
-from models import (Article, BarAccount, CustomArticle, EmptyModel,
-    FooAccount, Gallery, ModelWithStringPrimaryKey,
-    Person, Persona, Picture, Podcast, Section, Subscriber, Vodcast,
-    Language, Collector, Widget, Grommet, DooHickey, FancyDoodad, Whatsit,
-    Category, Post, Plot, FunkyTag, Chapter, Book, Promo, WorkHour, Employee,
-    Question, Answer, Inquisition, Actor, FoodDelivery,
-    RowLevelChangePermissionModel, Paper, CoverLetter, Story, OtherStory,
-    ComplexSortedPerson, Parent, Child)
+from .models import (Article, BarAccount, CustomArticle, EmptyModel, FooAccount,
+    Gallery, ModelWithStringPrimaryKey, Person, Persona, Picture, Podcast,
+    Section, Subscriber, Vodcast, Language, Collector, Widget, Grommet,
+    DooHickey, FancyDoodad, Whatsit, Category, Post, Plot, FunkyTag, Chapter,
+    Book, Promo, WorkHour, Employee, Question, Answer, Inquisition, Actor,
+    FoodDelivery, RowLevelChangePermissionModel, Paper, CoverLetter, Story,
+    OtherStory, ComplexSortedPerson, Parent, Child)
+
 
 ERROR_MESSAGE = "Please enter the correct username and password \
 for a staff account. Note that both fields are case-sensitive."
-
 
 class AdminViewBasicTest(TestCase):
     fixtures = ['admin-views-users.xml', 'admin-views-colors.xml',
@@ -137,7 +135,7 @@ class AdminViewBasicTest(TestCase):
             'date_1': u'14:55:39',
         }
         response = self.client.post('/test_admin/%s/admin_views/article/add/' % self.urlbit, post_data)
-        self.failUnlessEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'dismissAddAnotherPopup')
         self.assertContains(response, 'title with a new\u000Aline')
 
@@ -2786,11 +2784,11 @@ class ReadonlyTest(TestCase):
             formats.localize(datetime.date.today() - datetime.timedelta(days=7))
         )
 
-        self.assertContains(response, '<div class="form-row coolness">')
-        self.assertContains(response, '<div class="form-row awesomeness_level">')
-        self.assertContains(response, '<div class="form-row posted">')
-        self.assertContains(response, '<div class="form-row value">')
-        self.assertContains(response, '<div class="form-row ">')
+        self.assertContains(response, '<div class="form-row field-coolness">')
+        self.assertContains(response, '<div class="form-row field-awesomeness_level">')
+        self.assertContains(response, '<div class="form-row field-posted">')
+        self.assertContains(response, '<div class="form-row field-value">')
+        self.assertContains(response, '<div class="form-row">')
         self.assertContains(response, '<p class="help">', 3)
         self.assertContains(response, '<p class="help">Some help text for the title (with unicode ŠĐĆŽćžšđ)</p>')
         self.assertContains(response, '<p class="help">Some help text for the content (with unicode ŠĐĆŽćžšđ)</p>')
@@ -2983,6 +2981,33 @@ class GroupAdminTest(TestCase):
             self.assertEqual(response.status_code, 200)
 
 
+class CSSTest(TestCase):
+    urls = "regressiontests.admin_views.urls"
+    fixtures = ['admin-views-users.xml']
+
+    def setUp(self):
+        self.client.login(username='super', password='secret')
+
+    def tearDown(self):
+        self.client.logout()
+
+    def test_css_classes(self):
+        response = self.client.get('/test_admin/admin/admin_views/post/add/')
+
+        # The main form
+        self.assertContains(response, 'class="form-row field-title"')
+        self.assertContains(response, 'class="form-row field-content"')
+        self.assertContains(response, 'class="form-row field-public"')
+        self.assertContains(response, 'class="form-row field-awesomeness_level"')
+        self.assertContains(response, 'class="form-row field-coolness"')
+        self.assertContains(response, 'class="form-row field-value"')
+        self.assertContains(response, 'class="form-row"') # The lambda function
+
+        # The tabular inline
+        self.assertContains(response, '<td class="field-url">')
+        self.assertContains(response, '<td class="field-posted">')
+
+
 try:
     import docutils
 except ImportError:
@@ -3046,7 +3071,7 @@ class ValidXHTMLTests(TestCase):
             cp.remove('django.core.context_processors.i18n')
             settings.TEMPLATE_CONTEXT_PROCESSORS = tuple(cp)
             # Force re-evaluation of the contex processor list
-            django.template.context._standard_context_processors = None
+            context_module._standard_context_processors = None
         self.client.login(username='super', password='secret')
 
     def tearDown(self):
@@ -3054,7 +3079,7 @@ class ValidXHTMLTests(TestCase):
         if self._context_processors is not None:
             settings.TEMPLATE_CONTEXT_PROCESSORS = self._context_processors
             # Force re-evaluation of the contex processor list
-            django.template.context._standard_context_processors = None
+            context_module._standard_context_processors = None
         settings.USE_I18N = self._use_i18n
 
     def testLangNamePresent(self):

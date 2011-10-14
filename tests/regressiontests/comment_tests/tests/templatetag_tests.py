@@ -1,11 +1,13 @@
-from __future__ import with_statement
+from __future__ import with_statement, absolute_import
 
 from django.contrib.comments.forms import CommentForm
 from django.contrib.comments.models import Comment
 from django.contrib.contenttypes.models import ContentType
 from django.template import Template, Context
-from regressiontests.comment_tests.models import Article, Author
-from regressiontests.comment_tests.tests import CommentTestCase
+
+from ..models import Article, Author
+from . import CommentTestCase
+
 
 class CommentTemplateTagTests(CommentTestCase):
 
@@ -43,11 +45,14 @@ class CommentTemplateTagTests(CommentTestCase):
         self.testRenderCommentForm("{% render_comment_form for a %}")
 
     def testRenderCommentFormFromObjectWithQueryCount(self):
-        def test():
+        with self.assertNumQueries(1):
             self.testRenderCommentFormFromObject()
+<<<<<<< HEAD
         # 1 to select object
         # 1 to get the contenttype
         self.assertNumQueries(2, test)
+=======
+>>>>>>> upstream/master
 
     def verifyGetCommentCount(self, tag=None):
         t = "{% load comments %}" + (tag or "{% get_comment_count for comment_tests.article a.id as cc %}") + "{{ cc }}"
