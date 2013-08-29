@@ -1,19 +1,27 @@
 "Base Cache class."
+from __future__ import unicode_literals
 
 import warnings
 
 from django.core.exceptions import ImproperlyConfigured, DjangoRuntimeWarning
-from django.utils.encoding import smart_str
-from django.utils.importlib import import_module
+from django.utils.module_loading import import_by_path
+
 
 class InvalidCacheBackendError(ImproperlyConfigured):
     pass
 
+
 class CacheKeyWarning(DjangoRuntimeWarning):
     pass
 
+
+# Stub class to ensure not passing in a `timeout` argument results in
+# the default timeout
+DEFAULT_TIMEOUT = object()
+
 # Memcached does not accept keys longer than this.
 MEMCACHE_MAX_KEY_LENGTH = 250
+
 
 def default_key_func(key, key_prefix, version):
     """
@@ -23,7 +31,8 @@ def default_key_func(key, key_prefix, version):
     the `key_prefix'. KEY_FUNCTION can be used to specify an alternate
     function with custom key making behavior.
     """
-    return ':'.join([key_prefix, str(version), smart_str(key)])
+    return '%s:%s:%s' % (key_prefix, version, key)
+
 
 def get_key_func(key_func):
     """
@@ -35,10 +44,9 @@ def get_key_func(key_func):
         if callable(key_func):
             return key_func
         else:
-            key_func_module_path, key_func_name = key_func.rsplit('.', 1)
-            key_func_module = import_module(key_func_module_path)
-            return getattr(key_func_module, key_func_name)
+            return import_by_path(key_func)
     return default_key_func
+
 
 class BaseCache(object):
     def __init__(self, params):
@@ -62,7 +70,7 @@ class BaseCache(object):
         except (ValueError, TypeError):
             self._cull_frequency = 3
 
-        self.key_prefix = smart_str(params.get('KEY_PREFIX', ''))
+        self.key_prefix = params.get('KEY_PREFIX', '')
         self.version = params.get('VERSION', 1)
         self.key_func = get_key_func(params.get('KEY_FUNCTION', None))
 
@@ -80,7 +88,7 @@ class BaseCache(object):
         new_key = self.key_func(key, self.key_prefix, version)
         return new_key
 
-    def add(self, key, value, timeout=None, version=None):
+    def add(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
         """
         Set a value in the cache if the key does not already exist. If
         timeout is given, that timeout will be used for the key; otherwise
@@ -97,7 +105,7 @@ class BaseCache(object):
         """
         raise NotImplementedError
 
-    def set(self, key, value, timeout=None, version=None):
+    def set(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
         """
         Set a value in the cache. If timeout is given, that timeout will be
         used for the key; otherwise the default cache timeout will be used.
@@ -159,7 +167,7 @@ class BaseCache(object):
         # if a subclass overrides it.
         return self.has_key(key)
 
-    def set_many(self, data, timeout=None, version=None):
+    def set_many(self, data, timeout=DEFAULT_TIMEOUT, version=None):
         """
         Set a bunch of values in the cache at once from a dict of key/value
         pairs.  For certain backends (memcached), this is much more efficient
@@ -221,3 +229,7 @@ class BaseCache(object):
         the new version.
         """
         return self.incr_version(key, -delta, version)
+
+    def close(self, **kwargs):
+        """Close the cache connection"""
+        pass

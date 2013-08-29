@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 from django import forms
 from django.contrib.admin.util import (flatten_fieldsets, lookup_field,
     display_for_field, label_for_field, help_text_for_field)
@@ -7,10 +9,12 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db.models.fields.related import ManyToManyRel
 from django.forms.util import flatatt
 from django.template.defaultfilters import capfirst
-from django.utils.encoding import force_unicode, smart_unicode
-from django.utils.html import escape, conditional_escape
+from django.utils.encoding import force_text, smart_text
+from django.utils.html import conditional_escape, format_html
 from django.utils.safestring import mark_safe
+from django.utils import six
 from django.utils.translation import ugettext_lazy as _
+from django.conf import settings
 
 
 ACTION_CHECKBOX_NAME = '_selected_action'
@@ -46,13 +50,13 @@ class AdminForm(object):
         try:
             fieldset_name, fieldset_options = self.fieldsets[0]
             field_name = fieldset_options['fields'][0]
-            if not isinstance(field_name, basestring):
+            if not isinstance(field_name, six.string_types):
                 field_name = field_name[0]
             return self.form[field_name]
         except (KeyError, IndexError):
             pass
         try:
-            return iter(self.form).next()
+            return next(iter(self.form))
         except StopIteration:
             return None
 
@@ -68,14 +72,17 @@ class Fieldset(object):
       description=None, model_admin=None):
         self.form = form
         self.name, self.fields = name, fields
-        self.classes = u' '.join(classes)
+        self.classes = ' '.join(classes)
         self.description = description
         self.model_admin = model_admin
         self.readonly_fields = readonly_fields
 
     def _media(self):
         if 'collapse' in self.classes:
-            js = ['jquery.min.js', 'jquery.init.js', 'collapse.min.js']
+            extra = '' if settings.DEBUG else '.min'
+            js = ['jquery%s.js' % extra,
+                  'jquery.init.js',
+                  'collapse%s.js' % extra]
             return forms.Media(js=[static('admin/js/%s' % url) for url in js])
         return forms.Media()
     media = property(_media)
@@ -87,7 +94,7 @@ class Fieldset(object):
 class Fieldline(object):
     def __init__(self, form, field, readonly_fields=None, model_admin=None):
         self.form = form # A django.forms.Form instance
-        if not hasattr(field, "__iter__"):
+        if not hasattr(field, "__iter__") or isinstance(field, six.text_type):
             self.fields = [field]
         else:
             self.fields = field
@@ -105,7 +112,7 @@ class Fieldline(object):
                 yield AdminField(self.form, field, is_first=(i == 0))
 
     def errors(self):
-        return mark_safe(u'\n'.join([self.form[f].errors.as_ul() for f in self.fields if f not in self.readonly_fields]).strip('\n'))
+        return mark_safe('\n'.join([self.form[f].errors.as_ul() for f in self.fields if f not in self.readonly_fields]).strip('\n'))
 
 class AdminField(object):
     def __init__(self, form, field, is_first):
@@ -115,17 +122,19 @@ class AdminField(object):
 
     def label_tag(self):
         classes = []
+        contents = conditional_escape(force_text(self.field.label))
         if self.is_checkbox:
-            classes.append(u'vCheckboxLabel')
-            contents = force_unicode(escape(self.field.label))
-        else:
-            contents = force_unicode(escape(self.field.label)) + u':'
+            classes.append('vCheckboxLabel')
+
         if self.field.field.required:
-            classes.append(u'required')
+            classes.append('required')
         if not self.is_first:
-            classes.append(u'inline')
-        attrs = classes and {'class': u' '.join(classes)} or {}
-        return self.field.label_tag(contents=contents, attrs=attrs)
+            classes.append('inline')
+        attrs = {'class': ' '.join(classes)} if classes else {}
+        # checkboxes should not have a label suffix as the checkbox appears
+        # to the left of the label.
+        return self.field.label_tag(contents=mark_safe(contents), attrs=attrs,
+                                    label_suffix='' if self.is_checkbox else None)
 
     def errors(self):
         return mark_safe(self.field.errors.as_ul())
@@ -137,7 +146,7 @@ class AdminReadonlyField(object):
         # {{ field.name }} must be a useful class name to identify the field.
         # For convenience, store other field-related data here too.
         if callable(field):
-            class_name = field.__name__ != '<lambda>' and field.__name__ or ''
+            class_name = field.__name__ if field.__name__ != '<lambda>' else ''
         else:
             class_name = field
         self.field = {
@@ -157,11 +166,9 @@ class AdminReadonlyField(object):
         if not self.is_first:
             attrs["class"] = "inline"
         label = self.field['label']
-        contents = capfirst(force_unicode(escape(label))) + u":"
-        return mark_safe('<label%(attrs)s>%(contents)s</label>' % {
-            "attrs": flatatt(attrs),
-            "contents": contents,
-        })
+        return format_html('<label{0}>{1}:</label>',
+                           flatatt(attrs),
+                           capfirst(force_text(label)))
 
     def contents(self):
         from django.contrib.admin.templatetags.admin_list import _boolean_icon
@@ -177,14 +184,12 @@ class AdminReadonlyField(object):
                 if boolean:
                     result_repr = _boolean_icon(value)
                 else:
-                    result_repr = smart_unicode(value)
+                    result_repr = smart_text(value)
                     if getattr(attr, "allow_tags", False):
                         result_repr = mark_safe(result_repr)
             else:
-                if value is None:
-                    result_repr = EMPTY_CHANGELIST_VALUE
-                elif isinstance(f.rel, ManyToManyRel):
-                    result_repr = ", ".join(map(unicode, value.all()))
+                if isinstance(f.rel, ManyToManyRel) and value is not None:
+                    result_repr = ", ".join(map(six.text_type, value.all()))
                 else:
                     result_repr = display_for_field(value, f)
         return conditional_escape(result_repr)
@@ -221,19 +226,20 @@ class InlineAdminFormSet(object):
 
     def fields(self):
         fk = getattr(self.formset, "fk", None)
-        for i, field in enumerate(flatten_fieldsets(self.fieldsets)):
-            if fk and fk.name == field:
+        for i, field_name in enumerate(flatten_fieldsets(self.fieldsets)):
+            if fk and fk.name == field_name:
                 continue
-            if field in self.readonly_fields:
+            if field_name in self.readonly_fields:
                 yield {
-                    'label': label_for_field(field, self.opts.model, self.opts),
+                    'label': label_for_field(field_name, self.opts.model, self.opts),
                     'widget': {
                         'is_hidden': False
                     },
-                    'required': False
+                    'required': False,
+                    'help_text': help_text_for_field(field_name, self.opts.model),
                 }
             else:
-                yield self.formset.form.base_fields[field]
+                yield self.formset.form.base_fields[field_name]
 
     def _media(self):
         media = self.opts.media + self.formset.media
@@ -262,10 +268,12 @@ class InlineAdminForm(AdminForm):
             yield InlineFieldset(self.formset, self.form, name,
                 self.readonly_fields, model_admin=self.model_admin, **options)
 
-    def has_auto_field(self):
-        if self.form._meta.model._meta.has_auto_field:
+    def needs_explicit_pk_field(self):
+        # Auto fields are editable (oddly), so need to check for auto or non-editable pk
+        if self.form._meta.model._meta.has_auto_field or not self.form._meta.model._meta.pk.editable:
             return True
-        # Also search any parents for an auto field.
+        # Also search any parents for an auto field. (The pk info is propagated to child
+        # models so that does not need to be checked in parents.)
         for parent in self.form._meta.model._meta.get_parent_list():
             if parent._meta.has_auto_field:
                 return True
@@ -320,11 +328,11 @@ class AdminErrorList(forms.util.ErrorList):
     """
     def __init__(self, form, inline_formsets):
         if form.is_bound:
-            self.extend(form.errors.values())
+            self.extend(list(six.itervalues(form.errors)))
             for inline_formset in inline_formsets:
                 self.extend(inline_formset.non_form_errors())
                 for errors_in_inline_form in inline_formset.errors:
-                    self.extend(errors_in_inline_form.values())
+                    self.extend(list(six.itervalues(errors_in_inline_form)))
 
 def normalize_fieldsets(fieldsets):
     """

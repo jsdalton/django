@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 import datetime
 import os
 import re
@@ -5,18 +7,18 @@ import sys
 import types
 
 from django.conf import settings
-from django.core.exceptions import ImproperlyConfigured
 from django.http import (HttpResponse, HttpResponseServerError,
     HttpResponseNotFound, HttpRequest, build_request_repr)
 from django.template import Template, Context, TemplateDoesNotExist
 from django.template.defaultfilters import force_escape, pprint
 from django.utils.html import escape
-from django.utils.importlib import import_module
-from django.utils.encoding import smart_unicode, smart_str
+from django.utils.encoding import force_bytes, smart_text
+from django.utils.module_loading import import_by_path
+from django.utils import six
 
-HIDDEN_SETTINGS = re.compile('SECRET|PASSWORD|PROFANITIES_LIST|SIGNATURE')
+HIDDEN_SETTINGS = re.compile('API|TOKEN|KEY|SECRET|PASS|PROFANITIES_LIST|SIGNATURE')
 
-CLEANSED_SUBSTITUTE = u'********************'
+CLEANSED_SUBSTITUTE = '********************'
 
 def linebreak_iter(template_source):
     yield 0
@@ -61,10 +63,10 @@ def technical_500_response(request, exc_type, exc_value, tb):
     reporter = ExceptionReporter(request, exc_type, exc_value, tb)
     if request.is_ajax():
         text = reporter.get_traceback_text()
-        return HttpResponseServerError(text, mimetype='text/plain')
+        return HttpResponseServerError(text, content_type='text/plain')
     else:
         html = reporter.get_traceback_html()
-        return HttpResponseServerError(html, mimetype='text/html')
+        return HttpResponseServerError(html, content_type='text/html')
 
 # Cache for the default exception reporter filter instance.
 default_exception_reporter_filter = None
@@ -73,17 +75,8 @@ def get_exception_reporter_filter(request):
     global default_exception_reporter_filter
     if default_exception_reporter_filter is None:
         # Load the default filter for the first time and cache it.
-        modpath = settings.DEFAULT_EXCEPTION_REPORTER_FILTER
-        modname, classname = modpath.rsplit('.', 1)
-        try:
-            mod = import_module(modname)
-        except ImportError, e:
-            raise ImproperlyConfigured(
-            'Error importing default exception reporter filter %s: "%s"' % (modpath, e))
-        try:
-            default_exception_reporter_filter = getattr(mod, classname)()
-        except AttributeError:
-            raise ImproperlyConfigured('Default exception reporter filter module "%s" does not define a "%s" class' % (modname, classname))
+        default_exception_reporter_filter = import_by_path(
+            settings.DEFAULT_EXCEPTION_REPORTER_FILTER)()
     if request:
         return getattr(request, 'exception_reporter_filter', default_exception_reporter_filter)
     else:
@@ -92,7 +85,7 @@ def get_exception_reporter_filter(request):
 class ExceptionReporterFilter(object):
     """
     Base for all exception reporter filter classes. All overridable hooks
-    contain lenient default behaviours.
+    contain lenient default behaviors.
     """
 
     def get_request_repr(self, request):
@@ -108,7 +101,7 @@ class ExceptionReporterFilter(object):
             return request.POST
 
     def get_traceback_frame_variables(self, request, tb_frame):
-        return tb_frame.f_locals.items()
+        return list(six.iteritems(tb_frame.f_locals))
 
 class SafeExceptionReporterFilter(ExceptionReporterFilter):
     """
@@ -155,16 +148,26 @@ class SafeExceptionReporterFilter(ExceptionReporterFilter):
         Replaces the values of variables marked as sensitive with
         stars (*********).
         """
-        func_name = tb_frame.f_code.co_name
-        func = tb_frame.f_globals.get(func_name)
-        sensitive_variables = getattr(func, 'sensitive_variables', [])
-        cleansed = []
+        # Loop through the frame's callers to see if the sensitive_variables
+        # decorator was used.
+        current_frame = tb_frame.f_back
+        sensitive_variables = None
+        while current_frame is not None:
+            if (current_frame.f_code.co_name == 'sensitive_variables_wrapper'
+                and 'sensitive_variables_wrapper' in current_frame.f_locals):
+                # The sensitive_variables decorator was used, so we take note
+                # of the sensitive variables' names.
+                wrapper = current_frame.f_locals['sensitive_variables_wrapper']
+                sensitive_variables = getattr(wrapper, 'sensitive_variables', None)
+                break
+            current_frame = current_frame.f_back
+
+        cleansed = {}
         if self.is_active(request) and sensitive_variables:
             if sensitive_variables == '__ALL__':
                 # Cleanse all variables
                 for name, value in tb_frame.f_locals.items():
-                    cleansed.append((name, CLEANSED_SUBSTITUTE))
-                return cleansed
+                    cleansed[name] = CLEANSED_SUBSTITUTE
             else:
                 # Cleanse specified variables
                 for name, value in tb_frame.f_locals.items():
@@ -173,16 +176,25 @@ class SafeExceptionReporterFilter(ExceptionReporterFilter):
                     elif isinstance(value, HttpRequest):
                         # Cleanse the request's POST parameters.
                         value = self.get_request_repr(value)
-                    cleansed.append((name, value))
-                return cleansed
+                    cleansed[name] = value
         else:
             # Potentially cleanse only the request if it's one of the frame variables.
             for name, value in tb_frame.f_locals.items():
                 if isinstance(value, HttpRequest):
                     # Cleanse the request's POST parameters.
                     value = self.get_request_repr(value)
-                cleansed.append((name, value))
-            return cleansed
+                cleansed[name] = value
+
+        if (tb_frame.f_code.co_name == 'sensitive_variables_wrapper'
+            and 'sensitive_variables_wrapper' in tb_frame.f_locals):
+            # For good measure, obfuscate the decorated function's arguments in
+            # the sensitive_variables decorator's frame, in case the variables
+            # associated with those arguments were meant to be obfuscated from
+            # the decorated function's frame.
+            cleansed['func_args'] = CLEANSED_SUBSTITUTE
+            cleansed['func_kwargs'] = CLEANSED_SUBSTITUTE
+
+        return cleansed.items()
 
 class ExceptionReporter(object):
     """
@@ -201,12 +213,21 @@ class ExceptionReporter(object):
         self.loader_debug_info = None
 
         # Handle deprecated string exceptions
-        if isinstance(self.exc_type, basestring):
+        if isinstance(self.exc_type, six.string_types):
             self.exc_value = Exception('Deprecated String Exception: %r' % self.exc_type)
             self.exc_type = type(self.exc_value)
 
+    def format_path_status(self, path):
+        if not os.path.exists(path):
+            return "File does not exist"
+        if not os.path.isfile(path):
+            return "Not a file"
+        if not os.access(path, os.R_OK):
+            return "File is not readable"
+        return "File exists"
+
     def get_traceback_data(self):
-        "Return a Context instance containing traceback information."
+        """Return a dictionary containing traceback information."""
 
         if self.exc_type and issubclass(self.exc_type, TemplateDoesNotExist):
             from django.template.loader import template_source_loaders
@@ -217,8 +238,10 @@ class ExceptionReporter(object):
                     source_list_func = loader.get_template_sources
                     # NOTE: This assumes exc_value is the name of the template that
                     # the loader attempted to load.
-                    template_list = [{'name': t, 'exists': os.path.exists(t)} \
-                        for t in source_list_func(str(self.exc_value))]
+                    template_list = [{
+                        'name': t,
+                        'status': self.format_path_status(t),
+                    } for t in source_list_func(str(self.exc_value))]
                 except AttributeError:
                     template_list = []
                 loader_name = loader.__module__ + '.' + loader.__class__.__name__
@@ -242,7 +265,7 @@ class ExceptionReporter(object):
             end = getattr(self.exc_value, 'end', None)
             if start is not None and end is not None:
                 unicode_str = self.exc_value.args[1]
-                unicode_hint = smart_unicode(unicode_str[max(start-5, 0):min(end+5, len(unicode_str))], 'ascii', errors='replace')
+                unicode_hint = smart_text(unicode_str[max(start-5, 0):min(end+5, len(unicode_str))], 'ascii', errors='replace')
         from django import get_version
         c = {
             'is_email': self.is_email,
@@ -264,7 +287,7 @@ class ExceptionReporter(object):
         if self.exc_type:
             c['exception_type'] = self.exc_type.__name__
         if self.exc_value:
-            c['exception_value'] = smart_unicode(self.exc_value, errors='replace')
+            c['exception_value'] = smart_text(self.exc_value, errors='replace')
         if frames:
             c['lastframe'] = frames[-1]
         return c
@@ -272,13 +295,13 @@ class ExceptionReporter(object):
     def get_traceback_html(self):
         "Return HTML version of debug 500 HTTP error page."
         t = Template(TECHNICAL_500_TEMPLATE, name='Technical 500 template')
-        c = Context(self.get_traceback_data())
+        c = Context(self.get_traceback_data(), use_l10n=False)
         return t.render(c)
 
     def get_traceback_text(self):
         "Return plain text version of debug 500 HTTP error page."
         t = Template(TECHNICAL_500_TEXT_TEMPLATE, name='Technical 500 template')
-        c = Context(self.get_traceback_data(), autoescape=False)
+        c = Context(self.get_traceback_data(), autoescape=False, use_l10n=False)
         return t.render(c)
 
     def get_template_exception_info(self):
@@ -302,8 +325,14 @@ class ExceptionReporter(object):
         top = max(1, line - context_lines)
         bottom = min(total, line + 1 + context_lines)
 
+        # In some rare cases, exc_value.args might be empty.
+        try:
+            message = self.exc_value.args[0]
+        except IndexError:
+            message = '(Could not get exception message)'
+
         self.template_info = {
-            'message': self.exc_value.args[0],
+            'message': message,
             'source_lines': source_lines[top:bottom],
             'before': before,
             'during': during,
@@ -327,32 +356,33 @@ class ExceptionReporter(object):
                 source = source.splitlines()
         if source is None:
             try:
-                f = open(filename)
-                try:
-                    source = f.readlines()
-                finally:
-                    f.close()
+                with open(filename, 'rb') as fp:
+                    source = fp.read().splitlines()
             except (OSError, IOError):
                 pass
         if source is None:
             return None, [], None, []
 
-        encoding = 'ascii'
-        for line in source[:2]:
-            # File coding may be specified. Match pattern from PEP-263
-            # (http://www.python.org/dev/peps/pep-0263/)
-            match = re.search(r'coding[:=]\s*([-\w.]+)', line)
-            if match:
-                encoding = match.group(1)
-                break
-        source = [unicode(sline, encoding, 'replace') for sline in source]
+        # If we just read the source from a file, or if the loader did not
+        # apply tokenize.detect_encoding to decode the source into a Unicode
+        # string, then we should do that ourselves.
+        if isinstance(source[0], six.binary_type):
+            encoding = 'ascii'
+            for line in source[:2]:
+                # File coding may be specified. Match pattern from PEP-263
+                # (http://www.python.org/dev/peps/pep-0263/)
+                match = re.search(br'coding[:=]\s*([-\w.]+)', line)
+                if match:
+                    encoding = match.group(1).decode('ascii')
+                    break
+            source = [six.text_type(sline, encoding, 'replace') for sline in source]
 
         lower_bound = max(0, lineno - context_lines)
         upper_bound = lineno + context_lines
 
-        pre_context = [line.strip('\n') for line in source[lower_bound:lineno]]
-        context_line = source[lineno].strip('\n')
-        post_context = [line.strip('\n') for line in source[lineno+1:upper_bound]]
+        pre_context = source[lower_bound:lineno]
+        context_line = source[lineno]
+        post_context = source[lineno+1:upper_bound]
 
         return lower_bound, pre_context, context_line, post_context
 
@@ -374,7 +404,7 @@ class ExceptionReporter(object):
             if pre_context_lineno is not None:
                 frames.append({
                     'tb': tb,
-                    'type': module_name.startswith('django.') and 'django' or 'user',
+                    'type': 'django' if module_name.startswith('django.') else 'user',
                     'filename': filename,
                     'function': function,
                     'lineno': lineno + 1,
@@ -409,9 +439,12 @@ def technical_404_response(request, exception):
     except (IndexError, TypeError, KeyError):
         tried = []
     else:
-        if not tried:
-            # tried exists but is an empty list. The URLconf must've been empty.
-            return empty_urlconf(request)
+        if (not tried                           # empty URLconf
+            or (request.path == '/'
+                and len(tried) == 1             # default URLconf
+                and len(tried[0]) == 1
+                and tried[0][0].app_name == tried[0][0].namespace == 'admin')):
+            return default_urlconf(request)
 
     urlconf = getattr(request, 'urlconf', settings.ROOT_URLCONF)
     if isinstance(urlconf, types.ModuleType):
@@ -423,19 +456,17 @@ def technical_404_response(request, exception):
         'root_urlconf': settings.ROOT_URLCONF,
         'request_path': request.path_info[1:], # Trim leading slash
         'urlpatterns': tried,
-        'reason': smart_str(exception, errors='replace'),
+        'reason': force_bytes(exception, errors='replace'),
         'request': request,
         'settings': get_safe_settings(),
     })
-    return HttpResponseNotFound(t.render(c), mimetype='text/html')
+    return HttpResponseNotFound(t.render(c), content_type='text/html')
 
-def empty_urlconf(request):
+def default_urlconf(request):
     "Create an empty URLconf 404 error response."
-    t = Template(EMPTY_URLCONF_TEMPLATE, name='Empty URLConf template')
-    c = Context({
-        'project_name': settings.SETTINGS_MODULE.split('.')[0]
-    })
-    return HttpResponse(t.render(c), mimetype='text/html')
+    t = Template(DEFAULT_URLCONF_TEMPLATE, name='Default URLconf template')
+    c = Context({})
+    return HttpResponse(t.render(c), content_type='text/html')
 
 #
 # Templates are embedded in the file so that we know the error handler will
@@ -563,7 +594,7 @@ TECHNICAL_500_TEMPLATE = """
 <body>
 <div id="summary">
   <h1>{% if exception_type %}{{ exception_type }}{% else %}Report{% endif %}{% if request %} at {{ request.path_info|escape }}{% endif %}</h1>
-  <pre class="exception_value">{% if exception_value %}{{ exception_value|force_escape }}{% else %}No exception supplied{% endif %}</pre>
+  <pre class="exception_value">{% if exception_value %}{{ exception_value|force_escape }}{% else %}No exception message supplied{% endif %}</pre>
   <table class="meta">
 {% if request %}
     <tr>
@@ -629,7 +660,9 @@ TECHNICAL_500_TEMPLATE = """
         <ul>
         {% for loader in loader_debug_info %}
             <li>Using loader <code>{{ loader.loader }}</code>:
-                <ul>{% for t in loader.templates %}<li><code>{{ t.name }}</code> (File {% if t.exists %}exists{% else %}does not exist{% endif %})</li>{% endfor %}</ul>
+                <ul>
+                {% for t in loader.templates %}<li><code>{{ t.name }}</code> ({{ t.status }})</li>{% endfor %}
+                </ul>
             </li>
         {% endfor %}
         </ul>
@@ -732,7 +765,7 @@ Installed Middleware:
 {% if template_does_not_exist %}Template Loader Error:
 {% if loader_debug_info %}Django tried loading these templates, in this order:
 {% for loader in loader_debug_info %}Using loader {{ loader.loader }}:
-{% for t in loader.templates %}{{ t.name }} (File {% if t.exists %}exists{% else %}does not exist{% endif %})
+{% for t in loader.templates %}{{ t.name }} ({{ t.status }})
 {% endfor %}{% endfor %}
 {% else %}Django couldn't find any templates because your TEMPLATE_LOADERS setting is empty!
 {% endif %}
@@ -905,8 +938,8 @@ Exception Value: {{ exception_value|force_escape }}
 </html>
 """
 
-TECHNICAL_500_TEXT_TEMPLATE = """{% firstof exception_type 'Report' %}{% if request %} at {{ request.path_info }}{% endif %}
-{% firstof exception_value 'No exception supplied' %}
+TECHNICAL_500_TEXT_TEMPLATE = """{% load firstof from future %}{% firstof exception_type 'Report' %}{% if request %} at {{ request.path_info }}{% endif %}
+{% firstof exception_value 'No exception message supplied' %}
 {% if request %}
 Request Method: {{ request.META.REQUEST_METHOD }}
 Request URL: {{ request.build_absolute_uri }}{% endif %}
@@ -922,7 +955,7 @@ Installed Middleware:
 {% if template_does_not_exist %}Template loader Error:
 {% if loader_debug_info %}Django tried loading these templates, in this order:
 {% for loader in loader_debug_info %}Using loader {{ loader.loader }}:
-{% for t in loader.templates %}{{ t.name }} (File {% if t.exists %}exists{% else %}does not exist{% endif %})
+{% for t in loader.templates %}{{ t.name }} ({{ t.status }})
 {% endfor %}{% endfor %}
 {% else %}Django couldn't find any templates because your TEMPLATE_LOADERS setting is empty!
 {% endif %}
@@ -1038,7 +1071,7 @@ TECHNICAL_404_TEMPLATE = """
 </html>
 """
 
-EMPTY_URLCONF_TEMPLATE = """
+DEFAULT_URLCONF_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en"><head>
   <meta http-equiv="content-type" content="text/html; charset=utf-8">
@@ -1058,7 +1091,6 @@ EMPTY_URLCONF_TEMPLATE = """
     tbody td, tbody th { vertical-align:top; padding:2px 3px; }
     thead th { padding:1px 6px 1px 3px; background:#fefefe; text-align:left; font-weight:normal; font-size:11px; border:1px solid #ddd; }
     tbody th { width:12em; text-align:right; color:#666; padding-right:.5em; }
-    ul { margin-left: 2em; margin-top: 1em; }
     #summary { background: #e0ebff; }
     #summary h2 { font-weight: normal; color: #666; }
     #explanation { background:#eee; }
@@ -1074,11 +1106,10 @@ EMPTY_URLCONF_TEMPLATE = """
 </div>
 
 <div id="instructions">
-  <p>Of course, you haven't actually done any work yet. Here's what to do next:</p>
-  <ul>
-    <li>If you plan to use a database, edit the <code>DATABASES</code> setting in <code>{{ project_name }}/settings.py</code>.</li>
-    <li>Start your first app by running <code>python {{ project_name }}/manage.py startapp [appname]</code>.</li>
-  </ul>
+  <p>
+    Of course, you haven't actually done any work yet.
+    Next, start your first app by running <code>python manage.py startapp [appname]</code>.
+  </p>
 </div>
 
 <div id="explanation">

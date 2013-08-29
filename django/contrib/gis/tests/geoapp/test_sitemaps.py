@@ -1,19 +1,23 @@
-from __future__ import absolute_import
+from __future__ import unicode_literals
 
-try:
-    from cStringIO import StringIO
-except ImportError:
-    from StringIO import StringIO
+from io import BytesIO
+from unittest import skipUnless
 from xml.dom import minidom
+import os
 import zipfile
 
 from django.conf import settings
+from django.contrib.gis.geos import HAS_GEOS
+from django.contrib.gis.tests.utils import HAS_SPATIAL_DB
 from django.contrib.sites.models import Site
 from django.test import TestCase
+from django.utils._os import upath
 
-from .models import City, Country
+if HAS_GEOS:
+    from .models import City, Country
 
 
+@skipUnless(HAS_GEOS and HAS_SPATIAL_DB, "Geos and spatial db are required.")
 class GeoSitemapTest(TestCase):
 
     urls = 'django.contrib.gis.tests.geoapp.urls'
@@ -27,7 +31,7 @@ class GeoSitemapTest(TestCase):
         Site._meta.installed = self.old_Site_meta_installed
 
     def assertChildNodes(self, elem, expected):
-        "Taken from regressiontests/syndication/tests.py."
+        "Taken from syndication/tests.py."
         actual = set([n.nodeName for n in elem.childNodes])
         expected = set(expected)
         self.assertEqual(actual, expected)
@@ -35,9 +39,13 @@ class GeoSitemapTest(TestCase):
     def test_geositemap_index(self):
         "Tests geographic sitemap index."
         # Getting the geo index.
-        doc = minidom.parseString(self.client.get('/sitemap.xml').content)
+        from django.contrib import sitemaps
+        template_dirs = settings.TEMPLATE_DIRS + (
+            os.path.join(os.path.dirname(upath(sitemaps.__file__)), 'templates'),)
+        with self.settings(TEMPLATE_DIRS=template_dirs):
+            doc = minidom.parseString(self.client.get('/sitemap.xml').content)
         index = doc.firstChild
-        self.assertEqual(index.getAttribute(u'xmlns'), u'http://www.sitemaps.org/schemas/sitemap/0.9')
+        self.assertEqual(index.getAttribute('xmlns'), 'http://www.sitemaps.org/schemas/sitemap/0.9')
         self.assertEqual(3, len(index.getElementsByTagName('sitemap')))
 
     def test_geositemap_kml(self):
@@ -47,8 +55,8 @@ class GeoSitemapTest(TestCase):
 
             # Ensuring the right sitemaps namespaces are present.
             urlset = doc.firstChild
-            self.assertEqual(urlset.getAttribute(u'xmlns'), u'http://www.sitemaps.org/schemas/sitemap/0.9')
-            self.assertEqual(urlset.getAttribute(u'xmlns:geo'), u'http://www.google.com/geo/schemas/sitemap/1.0')
+            self.assertEqual(urlset.getAttribute('xmlns'), 'http://www.sitemaps.org/schemas/sitemap/0.9')
+            self.assertEqual(urlset.getAttribute('xmlns:geo'), 'http://www.google.com/geo/schemas/sitemap/1.0')
 
             urls = urlset.getElementsByTagName('url')
             self.assertEqual(2, len(urls)) # Should only be 2 sitemaps.
@@ -66,7 +74,7 @@ class GeoSitemapTest(TestCase):
                     kml_doc = minidom.parseString(self.client.get(kml_url).content)
                 elif kml_type == 'kmz':
                     # Have to decompress KMZ before parsing.
-                    buf = StringIO(self.client.get(kml_url).content)
+                    buf = BytesIO(self.client.get(kml_url).content)
                     zf = zipfile.ZipFile(buf)
                     self.assertEqual(1, len(zf.filelist))
                     self.assertEqual('doc.kml', zf.filelist[0].filename)
@@ -87,8 +95,8 @@ class GeoSitemapTest(TestCase):
 
         # Ensuring the right sitemaps namespaces are present.
         urlset = doc.firstChild
-        self.assertEqual(urlset.getAttribute(u'xmlns'), u'http://www.sitemaps.org/schemas/sitemap/0.9')
-        self.assertEqual(urlset.getAttribute(u'xmlns:geo'), u'http://www.google.com/geo/schemas/sitemap/1.0')
+        self.assertEqual(urlset.getAttribute('xmlns'), 'http://www.sitemaps.org/schemas/sitemap/0.9')
+        self.assertEqual(urlset.getAttribute('xmlns:geo'), 'http://www.google.com/geo/schemas/sitemap/1.0')
 
         # Making sure the correct number of feed URLs were included.
         urls = urlset.getElementsByTagName('url')

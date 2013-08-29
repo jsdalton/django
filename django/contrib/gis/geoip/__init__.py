@@ -12,7 +12,7 @@
  corresponding to settings.GEOIP_PATH.
 """
 try:
-    from django.contrib.gis.geoip.base import GeoIP, GeoIPException
+    from .base import GeoIP, GeoIPException
     HAS_GEOIP = True
 except:
     HAS_GEOIP = False

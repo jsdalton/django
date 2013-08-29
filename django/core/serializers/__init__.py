@@ -4,7 +4,7 @@ Interfaces for serializing Django objects.
 Usage::
 
     from django.core import serializers
-    json = serializers.serialize("json", some_query_set)
+    json = serializers.serialize("json", some_queryset)
     objects = list(serializers.deserialize("json", json))
 
 To add your own serializers, use the SERIALIZATION_MODULES setting::
@@ -16,8 +16,10 @@ To add your own serializers, use the SERIALIZATION_MODULES setting::
 
 """
 
+import importlib
+
 from django.conf import settings
-from django.utils import importlib
+from django.utils import six
 from django.core.serializers.base import SerializerDoesNotExist
 
 # Built-in serializers
@@ -75,12 +77,12 @@ def get_serializer(format):
 def get_serializer_formats():
     if not _serializers:
         _load_serializers()
-    return _serializers.keys()
+    return list(_serializers)
 
 def get_public_serializer_formats():
     if not _serializers:
         _load_serializers()
-    return [k for k, v in _serializers.iteritems() if not v.Serializer.internal_use_only]
+    return [k for k, v in six.iteritems(_serializers) if not v.Serializer.internal_use_only]
 
 def get_deserializer(format):
     if not _serializers:

@@ -2,18 +2,23 @@
 Views and functions for serving static files. These are only to be used
 during development, and SHOULD NOT be used in a production setting.
 """
-from __future__ import with_statement
+from __future__ import unicode_literals
 
 import mimetypes
 import os
 import stat
 import posixpath
 import re
-import urllib
+try:
+    from urllib.parse import unquote
+except ImportError:     # Python 2
+    from urllib import unquote
 
-from django.http import Http404, HttpResponse, HttpResponseRedirect, HttpResponseNotModified
+from django.http import (Http404, HttpResponse, HttpResponseRedirect,
+    HttpResponseNotModified, StreamingHttpResponse)
 from django.template import loader, Template, Context, TemplateDoesNotExist
 from django.utils.http import http_date, parse_http_date
+from django.utils.translation import ugettext as _, ugettext_noop
 
 def serve(request, path, document_root=None, show_indexes=False):
     """
@@ -29,7 +34,7 @@ def serve(request, path, document_root=None, show_indexes=False):
     but if you'd like to override it, you can create a template called
     ``static/directory_index.html``.
     """
-    path = posixpath.normpath(urllib.unquote(path))
+    path = posixpath.normpath(unquote(path))
     path = path.lstrip('/')
     newpath = ''
     for part in path.split('/'):
@@ -48,18 +53,18 @@ def serve(request, path, document_root=None, show_indexes=False):
     if os.path.isdir(fullpath):
         if show_indexes:
             return directory_index(newpath, fullpath)
-        raise Http404("Directory indexes are not allowed here.")
+        raise Http404(_("Directory indexes are not allowed here."))
     if not os.path.exists(fullpath):
-        raise Http404('"%s" does not exist' % fullpath)
+        raise Http404(_('"%(path)s" does not exist') % {'path': fullpath})
     # Respect the If-Modified-Since header.
     statobj = os.stat(fullpath)
-    mimetype, encoding = mimetypes.guess_type(fullpath)
-    mimetype = mimetype or 'application/octet-stream'
     if not was_modified_since(request.META.get('HTTP_IF_MODIFIED_SINCE'),
                               statobj.st_mtime, statobj.st_size):
-        return HttpResponseNotModified(mimetype=mimetype)
-    with open(fullpath, 'rb') as f:
-        response = HttpResponse(f.read(), mimetype=mimetype)
+        return HttpResponseNotModified()
+    content_type, encoding = mimetypes.guess_type(fullpath)
+    content_type = content_type or 'application/octet-stream'
+    response = StreamingHttpResponse(open(fullpath, 'rb'),
+                                     content_type=content_type)
     response["Last-Modified"] = http_date(statobj.st_mtime)
     if stat.S_ISREG(statobj.st_mode):
         response["Content-Length"] = statobj.st_size
@@ -69,16 +74,17 @@ def serve(request, path, document_root=None, show_indexes=False):
 
 
 DEFAULT_DIRECTORY_INDEX_TEMPLATE = """
+{% load i18n %}
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta http-equiv="Content-type" content="text/html; charset=utf-8" />
     <meta http-equiv="Content-Language" content="en-us" />
     <meta name="robots" content="NONE,NOARCHIVE" />
-    <title>Index of {{ directory }}</title>
+    <title>{% blocktrans %}Index of {{ directory }}{% endblocktrans %}</title>
   </head>
   <body>
-    <h1>Index of {{ directory }}</h1>
+    <h1>{% blocktrans %}Index of {{ directory }}{% endblocktrans %}</h1>
     <ul>
       {% ifnotequal directory "/" %}
       <li><a href="../">../</a></li>
@@ -90,6 +96,7 @@ DEFAULT_DIRECTORY_INDEX_TEMPLATE = """
   </body>
 </html>
 """
+template_translatable = ugettext_noop("Index of %(directory)s")
 
 def directory_index(path, fullpath):
     try:
@@ -132,7 +139,7 @@ def was_modified_since(header=None, mtime=0, size=0):
         header_len = matches.group(3)
         if header_len and int(header_len) != size:
             raise ValueError
-        if mtime > header_mtime:
+        if int(mtime) > header_mtime:
             raise ValueError
     except (AttributeError, ValueError, OverflowError):
         return True

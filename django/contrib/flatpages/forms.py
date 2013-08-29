@@ -1,6 +1,7 @@
 from django import forms
-from django.utils.translation import ugettext_lazy as _
+from django.conf import settings
 from django.contrib.flatpages.models import FlatPage
+from django.utils.translation import ugettext, ugettext_lazy as _
 
 class FlatpageForm(forms.ModelForm):
     url = forms.RegexField(label=_("URL"), max_length=100, regex=r'^[-\w/\.~]+$',
@@ -11,6 +12,23 @@ class FlatpageForm(forms.ModelForm):
 
     class Meta:
         model = FlatPage
+        fields = '__all__'
+
+    def clean_url(self):
+        url = self.cleaned_data['url']
+        if not url.startswith('/'):
+            raise forms.ValidationError(
+                ugettext("URL is missing a leading slash."),
+                code='missing_leading_slash',
+            )
+        if (settings.APPEND_SLASH and
+            'django.middleware.common.CommonMiddleware' in settings.MIDDLEWARE_CLASSES and
+            not url.endswith('/')):
+            raise forms.ValidationError(
+                ugettext("URL is missing a trailing slash."),
+                code='missing_trailing_slash',
+            )
+        return url
 
     def clean(self):
         url = self.cleaned_data.get('url', None)
@@ -20,11 +38,13 @@ class FlatpageForm(forms.ModelForm):
         if self.instance.pk:
             same_url = same_url.exclude(pk=self.instance.pk)
 
-        if same_url.filter(sites__in=sites).exists():
+        if sites and same_url.filter(sites__in=sites).exists():
             for site in sites:
                 if same_url.filter(sites=site).exists():
                     raise forms.ValidationError(
-                        _('Flatpage with url %s already exists for site %s'
-                          % (url, site)))
+                        _('Flatpage with url %(url)s already exists for site %(site)s'),
+                        code='duplicate_url',
+                        params={'url': url, 'site': site},
+                    )
 
         return super(FlatpageForm, self).clean()

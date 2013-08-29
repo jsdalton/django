@@ -1,14 +1,24 @@
+from __future__ import unicode_literals
+
+import base64
 import calendar
 import datetime
 import re
 import sys
-import urllib
-import urlparse
+try:
+    from urllib import parse as urllib_parse
+except ImportError:     # Python 2
+    import urllib as urllib_parse
+    import urlparse
+    urllib_parse.urlparse = urlparse.urlparse
+
+from binascii import Error as BinasciiError
 from email.utils import formatdate
 
 from django.utils.datastructures import MultiValueDict
-from django.utils.encoding import smart_str, force_unicode
+from django.utils.encoding import force_str, force_text
 from django.utils.functional import allow_lazy
+from django.utils import six
 
 ETAG_MATCH = re.compile(r'(?:W/)?"((?:\\.|[^"])*)"')
 
@@ -30,9 +40,8 @@ def urlquote(url, safe='/'):
     can safely be used as part of an argument to a subsequent iri_to_uri() call
     without double-quoting occurring.
     """
-    return force_unicode(urllib.quote(smart_str(url), smart_str(safe)))
-
-urlquote = allow_lazy(urlquote, unicode)
+    return force_text(urllib_parse.quote(force_str(url), force_str(safe)))
+urlquote = allow_lazy(urlquote, six.text_type)
 
 def urlquote_plus(url, safe=''):
     """
@@ -41,22 +50,38 @@ def urlquote_plus(url, safe=''):
     returned string can safely be used as part of an argument to a subsequent
     iri_to_uri() call without double-quoting occurring.
     """
-    return force_unicode(urllib.quote_plus(smart_str(url), smart_str(safe)))
-urlquote_plus = allow_lazy(urlquote_plus, unicode)
+    return force_text(urllib_parse.quote_plus(force_str(url), force_str(safe)))
+urlquote_plus = allow_lazy(urlquote_plus, six.text_type)
+
+def urlunquote(quoted_url):
+    """
+    A wrapper for Python's urllib.unquote() function that can operate on
+    the result of django.utils.http.urlquote().
+    """
+    return force_text(urllib_parse.unquote(force_str(quoted_url)))
+urlunquote = allow_lazy(urlunquote, six.text_type)
+
+def urlunquote_plus(quoted_url):
+    """
+    A wrapper for Python's urllib.unquote_plus() function that can operate on
+    the result of django.utils.http.urlquote_plus().
+    """
+    return force_text(urllib_parse.unquote_plus(force_str(quoted_url)))
+urlunquote_plus = allow_lazy(urlunquote_plus, six.text_type)
 
 def urlencode(query, doseq=0):
     """
     A version of Python's urllib.urlencode() function that can operate on
-    unicode strings. The parameters are first case to UTF-8 encoded strings and
+    unicode strings. The parameters are first cast to UTF-8 encoded strings and
     then encoded as per normal.
     """
     if isinstance(query, MultiValueDict):
         query = query.lists()
     elif hasattr(query, 'items'):
         query = query.items()
-    return urllib.urlencode(
-        [(smart_str(k),
-         isinstance(v, (list,tuple)) and [smart_str(i) for i in v] or smart_str(v))
+    return urllib_parse.urlencode(
+        [(force_str(k),
+         [force_str(i) for i in v] if isinstance(v, (list,tuple)) else force_str(v))
             for k, v in query],
         doseq)
 
@@ -84,8 +109,7 @@ def http_date(epoch_seconds=None):
 
     Outputs a string in the format 'Wdy, DD Mon YYYY HH:MM:SS GMT'.
     """
-    rfcdate = formatdate(epoch_seconds)
-    return '%s GMT' % rfcdate[:25]
+    return formatdate(epoch_seconds, usegmt=True)
 
 def parse_http_date(date):
     """
@@ -94,8 +118,7 @@ def parse_http_date(date):
     The three formats allowed by the RFC are accepted, even if only the first
     one is still in widespread use.
 
-    Returns an floating point number expressed in seconds since the epoch, in
-    UTC.
+    Returns an integer expressed in seconds since the epoch, in UTC.
     """
     # emails.Util.parsedate does the job for RFC1123 dates; unfortunately
     # RFC2616 makes it mandatory to support RFC850 dates too. So we roll
@@ -121,7 +144,7 @@ def parse_http_date(date):
         result = datetime.datetime(year, month, day, hour, min, sec)
         return calendar.timegm(result.utctimetuple())
     except Exception:
-        raise ValueError("%r is not a valid date" % date)
+        six.reraise(ValueError, ValueError("%r is not a valid date" % date), sys.exc_info()[2])
 
 def parse_http_date_safe(date):
     """
@@ -145,8 +168,9 @@ def base36_to_int(s):
     if len(s) > 13:
         raise ValueError("Base36 input too large")
     value = int(s, 36)
-    # ... then do a final check that the value will fit into an int.
-    if value > sys.maxint:
+    # ... then do a final check that the value will fit into an int to avoid
+    # returning a long (#15067). The long type was removed in Python 3.
+    if not six.PY3 and value > sys.maxint:
         raise ValueError("Base36 input too large")
     return value
 
@@ -156,6 +180,13 @@ def int_to_base36(i):
     """
     digits = "0123456789abcdefghijklmnopqrstuvwxyz"
     factor = 0
+    if i < 0:
+        raise ValueError("Negative base36 conversion input.")
+    if not six.PY3:
+        if not isinstance(i, six.integer_types):
+            raise TypeError("Non-integer base36 conversion input.")
+        if i > sys.maxint:
+            raise ValueError("Base36 conversion input too large.")
     # Find starting factor
     while True:
         factor += 1
@@ -171,6 +202,24 @@ def int_to_base36(i):
         factor -= 1
     return ''.join(base36)
 
+def urlsafe_base64_encode(s):
+    """
+    Encodes a bytestring in base64 for use in URLs, stripping any trailing
+    equal signs.
+    """
+    return base64.urlsafe_b64encode(s).rstrip(b'\n=')
+
+def urlsafe_base64_decode(s):
+    """
+    Decodes a base64 encoded string, adding back any trailing equal signs that
+    might have been stripped.
+    """
+    s = s.encode('utf-8') # base64encode should only return ASCII.
+    try:
+        return base64.urlsafe_b64decode(s.ljust(len(s) + len(s) % 4, b'='))
+    except (LookupError, BinasciiError) as e:
+        raise ValueError(e)
+
 def parse_etags(etag_str):
     """
     Parses a string with one or several etags passed in If-None-Match and
@@ -181,29 +230,34 @@ def parse_etags(etag_str):
     if not etags:
         # etag_str has wrong format, treat it as an opaque string then
         return [etag_str]
-    etags = [e.decode('string_escape') for e in etags]
+    etags = [e.encode('ascii').decode('unicode_escape') for e in etags]
     return etags
 
 def quote_etag(etag):
     """
-    Wraps a string in double quotes escaping contents as necesary.
+    Wraps a string in double quotes escaping contents as necessary.
     """
     return '"%s"' % etag.replace('\\', '\\\\').replace('"', '\\"')
 
-if sys.version_info >= (2, 6):
-    def same_origin(url1, url2):
-        """
-        Checks if two URLs are 'same-origin'
-        """
-        p1, p2 = urlparse.urlparse(url1), urlparse.urlparse(url2)
+def same_origin(url1, url2):
+    """
+    Checks if two URLs are 'same-origin'
+    """
+    p1, p2 = urllib_parse.urlparse(url1), urllib_parse.urlparse(url2)
+    try:
         return (p1.scheme, p1.hostname, p1.port) == (p2.scheme, p2.hostname, p2.port)
-else:
-    # Python 2.5 compatibility. This actually works for Python 2.6 and above,
-    # but the above definition is much more obviously correct and so is
-    # preferred going forward.
-    def same_origin(url1, url2):
-        """
-        Checks if two URLs are 'same-origin'
-        """
-        p1, p2 = urlparse.urlparse(url1), urlparse.urlparse(url2)
-        return p1[0:2] == p2[0:2]
+    except ValueError:
+        return False
+
+def is_safe_url(url, host=None):
+    """
+    Return ``True`` if the url is a safe redirection (i.e. it doesn't point to
+    a different host and uses a safe scheme).
+
+    Always returns ``False`` on an empty url.
+    """
+    if not url:
+        return False
+    url_info = urllib_parse.urlparse(url)
+    return (not url_info.netloc or url_info.netloc == host) and \
+        (not url_info.scheme or url_info.scheme in ['http', 'https'])

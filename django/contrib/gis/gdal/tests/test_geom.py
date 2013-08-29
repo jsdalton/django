@@ -1,15 +1,23 @@
+import json
 from binascii import b2a_hex
 try:
-    import cPickle as pickle
+    from django.utils.six.moves import cPickle as pickle
 except ImportError:
     import pickle
+import unittest
+from unittest import skipUnless
 
-from django.contrib.gis.gdal import (OGRGeometry, OGRGeomType, OGRException,
-    OGRIndexError, SpatialReference, CoordTransform, GDAL_VERSION)
-from django.contrib.gis.gdal.prototypes.geom import GEOJSON
+from django.contrib.gis.gdal import HAS_GDAL
 from django.contrib.gis.geometry.test_data import TestDataMixin
-from django.utils import unittest
+from django.utils.six.moves import xrange
 
+if HAS_GDAL:
+    from django.contrib.gis.gdal import (OGRGeometry, OGRGeomType,
+        OGRException, OGRIndexError, SpatialReference, CoordTransform,
+        GDAL_VERSION)
+
+
+@skipUnless(HAS_GDAL, "GDAL is required")
 class OGRGeomTest(unittest.TestCase, TestDataMixin):
     "This tests the OGR Geometry."
 
@@ -17,15 +25,12 @@ class OGRGeomTest(unittest.TestCase, TestDataMixin):
         "Testing OGRGeomType object."
 
         # OGRGeomType should initialize on all these inputs.
-        try:
-            g = OGRGeomType(1)
-            g = OGRGeomType(7)
-            g = OGRGeomType('point')
-            g = OGRGeomType('GeometrycollectioN')
-            g = OGRGeomType('LINearrING')
-            g = OGRGeomType('Unknown')
-        except:
-            self.fail('Could not create an OGRGeomType object!')
+        OGRGeomType(1)
+        OGRGeomType(7)
+        OGRGeomType('point')
+        OGRGeomType('GeometrycollectioN')
+        OGRGeomType('LINearrING')
+        OGRGeomType('Unknown')
 
         # Should throw TypeError on this input
         self.assertRaises(OGRException, OGRGeomType, 23)
@@ -91,7 +96,7 @@ class OGRGeomTest(unittest.TestCase, TestDataMixin):
         "Testing HEX input/output."
         for g in self.geometries.hex_wkt:
             geom1 = OGRGeometry(g.wkt)
-            self.assertEqual(g.hex, geom1.hex)
+            self.assertEqual(g.hex.encode(), geom1.hex)
             # Constructing w/HEX
             geom2 = OGRGeometry(g.hex)
             self.assertEqual(geom1, geom2)
@@ -101,25 +106,25 @@ class OGRGeomTest(unittest.TestCase, TestDataMixin):
         for g in self.geometries.hex_wkt:
             geom1 = OGRGeometry(g.wkt)
             wkb = geom1.wkb
-            self.assertEqual(b2a_hex(wkb).upper(), g.hex)
+            self.assertEqual(b2a_hex(wkb).upper(), g.hex.encode())
             # Constructing w/WKB.
             geom2 = OGRGeometry(wkb)
             self.assertEqual(geom1, geom2)
 
     def test01e_json(self):
         "Testing GeoJSON input/output."
-        if not GEOJSON: return
         for g in self.geometries.json_geoms:
             geom = OGRGeometry(g.wkt)
             if not hasattr(g, 'not_equal'):
-                self.assertEqual(g.json, geom.json)
-                self.assertEqual(g.json, geom.geojson)
+                # Loading jsons to prevent decimal differences
+                self.assertEqual(json.loads(g.json), json.loads(geom.json))
+                self.assertEqual(json.loads(g.json), json.loads(geom.geojson))
             self.assertEqual(OGRGeometry(g.wkt), OGRGeometry(geom.json))
 
     def test02_points(self):
         "Testing Point objects."
 
-        prev = OGRGeometry('POINT(0 0)')
+        OGRGeometry('POINT(0 0)')
         for p in self.geometries.points:
             if not hasattr(p, 'z'): # No 3D
                 pnt = OGRGeometry(p.wkt)
@@ -234,26 +239,16 @@ class OGRGeomTest(unittest.TestCase, TestDataMixin):
         # Both rings in this geometry are not closed.
         poly = OGRGeometry('POLYGON((0 0, 5 0, 5 5, 0 5), (1 1, 2 1, 2 2, 2 1))')
         self.assertEqual(8, poly.point_count)
-        print "\nBEGIN - expecting IllegalArgumentException; safe to ignore.\n"
-        try:
-            c = poly.centroid
-        except OGRException:
-            # Should raise an OGR exception, rings are not closed
-            pass
-        else:
-            self.fail('Should have raised an OGRException!')
-        print "\nEND - expecting IllegalArgumentException; safe to ignore.\n"
+        with self.assertRaises(OGRException):
+            poly.centroid
 
-        # Closing the rings -- doesn't work on GDAL versions 1.4.1 and below:
-        # http://trac.osgeo.org/gdal/ticket/1673
-        if GDAL_VERSION <= (1, 4, 1): return
         poly.close_rings()
         self.assertEqual(10, poly.point_count) # Two closing points should've been added
         self.assertEqual(OGRGeometry('POINT(2.5 2.5)'), poly.centroid)
 
     def test08_multipolygons(self):
         "Testing MultiPolygon objects."
-        prev = OGRGeometry('POINT(0 0)')
+        OGRGeometry('POINT(0 0)')
         for mp in self.geometries.multipolygons:
             mpoly = OGRGeometry(mp.wkt)
             self.assertEqual(6, mpoly.geom_type)
@@ -485,11 +480,3 @@ class OGRGeomTest(unittest.TestCase, TestDataMixin):
         "Testing equivalence methods with non-OGRGeometry instances."
         self.assertNotEqual(None, OGRGeometry('POINT(0 0)'))
         self.assertEqual(False, OGRGeometry('LINESTRING(0 0, 1 1)') == 3)
-
-def suite():
-    s = unittest.TestSuite()
-    s.addTest(unittest.makeSuite(OGRGeomTest))
-    return s
-
-def run(verbosity=2):
-    unittest.TextTestRunner(verbosity=verbosity).run(suite())

@@ -2,9 +2,11 @@
 Convenience routines for creating non-trivial Field subclasses, as well as
 backwards compatibility utilities.
 
-Add SubfieldBase as the __metaclass__ for your Field subclass, implement
-to_python() and the other necessary methods and everything will work seamlessly.
+Add SubfieldBase as the metaclass for your Field subclass, implement
+to_python() and the other necessary methods and everything will work
+seamlessly.
 """
+
 
 class SubfieldBase(type):
     """
@@ -17,6 +19,7 @@ class SubfieldBase(type):
             new_class, attrs.get('contribute_to_class')
         )
         return new_class
+
 
 class Creator(object):
     """
@@ -32,6 +35,7 @@ class Creator(object):
 
     def __set__(self, obj, value):
         obj.__dict__[self.field.name] = self.field.to_python(value)
+
 
 def make_contrib(superclass, func=None):
     """

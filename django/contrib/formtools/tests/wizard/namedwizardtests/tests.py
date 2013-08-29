@@ -1,12 +1,16 @@
+from __future__ import unicode_literals
+
 from django.core.urlresolvers import reverse
 from django.http import QueryDict
 from django.test import TestCase
 
 from django.contrib.auth.models import User
+from django.contrib.auth.tests.utils import skipIfCustomUser
 
 from django.contrib.formtools.wizard.views import (NamedUrlSessionWizardView,
                                                    NamedUrlCookieWizardView)
-from django.contrib.formtools.tests.wizard.forms import get_request, Step1, Step2
+from django.contrib.formtools.tests.wizard.test_forms import get_request, Step1, Step2
+
 
 class NamedWizardTests(object):
     urls = 'django.contrib.formtools.tests.wizard.namedwizardtests.urls'
@@ -18,7 +22,7 @@ class NamedWizardTests(object):
     def test_initial_call(self):
         response = self.client.get(reverse('%s_start' % self.wizard_urlname))
         self.assertEqual(response.status_code, 302)
-        response = self.client.get(response['Location'])
+        response = self.client.get(response.url)
         self.assertEqual(response.status_code, 200)
         wizard = response.context['wizard']
         self.assertEqual(wizard['steps'].current, 'form1')
@@ -28,6 +32,7 @@ class NamedWizardTests(object):
         self.assertEqual(wizard['steps'].prev, None)
         self.assertEqual(wizard['steps'].next, 'form2')
         self.assertEqual(wizard['steps'].count, 4)
+        self.assertEqual(wizard['url_name'], self.wizard_urlname)
 
     def test_initial_call_with_params(self):
         get_params = {'getvar1': 'getval1', 'getvar2': 'getval2'}
@@ -36,7 +41,7 @@ class NamedWizardTests(object):
         self.assertEqual(response.status_code, 302)
 
         # Test for proper redirect GET parameters
-        location = response['Location']
+        location = response.url
         self.assertNotEqual(location.find('?'), -1)
         querydict = QueryDict(location[location.find('?') + 1:])
         self.assertEqual(dict(querydict.items()), get_params)
@@ -49,14 +54,14 @@ class NamedWizardTests(object):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['wizard']['steps'].current, 'form1')
         self.assertEqual(response.context['wizard']['form'].errors,
-                         {'name': [u'This field is required.'],
-                          'user': [u'This field is required.']})
+                         {'name': ['This field is required.'],
+                          'user': ['This field is required.']})
 
     def test_form_post_success(self):
         response = self.client.post(
             reverse(self.wizard_urlname, kwargs={'step': 'form1'}),
             self.wizard_step_data[0])
-        response = self.client.get(response['Location'])
+        response = self.client.get(response.url)
 
         self.assertEqual(response.status_code, 200)
         wizard = response.context['wizard']
@@ -75,7 +80,7 @@ class NamedWizardTests(object):
         response = self.client.post(
             reverse(self.wizard_urlname, kwargs={'step': 'form1'}),
             self.wizard_step_data[0])
-        response = self.client.get(response['Location'])
+        response = self.client.get(response.url)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['wizard']['steps'].current, 'form2')
@@ -83,8 +88,8 @@ class NamedWizardTests(object):
         response = self.client.post(
             reverse(self.wizard_urlname, kwargs={
                 'step': response.context['wizard']['steps'].current
-            }), {'wizard_prev_step': response.context['wizard']['steps'].prev})
-        response = self.client.get(response['Location'])
+            }), {'wizard_goto_step': response.context['wizard']['steps'].prev})
+        response = self.client.get(response.url)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['wizard']['steps'].current, 'form1')
@@ -112,16 +117,19 @@ class NamedWizardTests(object):
             reverse(self.wizard_urlname,
                     kwargs={'step': response.context['wizard']['steps'].current}),
             self.wizard_step_data[0])
-        response = self.client.get(response['Location'])
+        response = self.client.get(response.url)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['wizard']['steps'].current, 'form2')
 
+        post_data = self.wizard_step_data[1]
+        post_data['form2-file1'].close()
+        post_data['form2-file1'] = open(__file__, 'rb')
         response = self.client.post(
             reverse(self.wizard_urlname,
                     kwargs={'step': response.context['wizard']['steps'].current}),
-            self.wizard_step_data[1])
-        response = self.client.get(response['Location'])
+            post_data)
+        response = self.client.get(response.url)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['wizard']['steps'].current, 'form3')
@@ -130,7 +138,7 @@ class NamedWizardTests(object):
             reverse(self.wizard_urlname,
                     kwargs={'step': response.context['wizard']['steps'].current}),
             self.wizard_step_data[2])
-        response = self.client.get(response['Location'])
+        response = self.client.get(response.url)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['wizard']['steps'].current, 'form4')
@@ -139,14 +147,19 @@ class NamedWizardTests(object):
             reverse(self.wizard_urlname,
                     kwargs={'step': response.context['wizard']['steps'].current}),
             self.wizard_step_data[3])
-        response = self.client.get(response['Location'])
+        response = self.client.get(response.url)
         self.assertEqual(response.status_code, 200)
 
-        self.assertEqual(response.context['form_list'], [
-            {'name': u'Pony', 'thirsty': True, 'user': self.testuser},
-            {'address1': u'123 Main St', 'address2': u'Djangoland'},
-            {'random_crap': u'blah blah'},
-            [{'random_crap': u'blah blah'}, {'random_crap': u'blah blah'}]])
+        all_data = response.context['form_list']
+        with open(__file__, 'rb') as f:
+            self.assertEqual(all_data[1]['file1'].read(), f.read())
+        all_data[1]['file1'].close()
+        del all_data[1]['file1']
+        self.assertEqual(all_data, [
+            {'name': 'Pony', 'thirsty': True, 'user': self.testuser},
+            {'address1': '123 Main St', 'address2': 'Djangoland'},
+            {'random_crap': 'blah blah'},
+            [{'random_crap': 'blah blah'}, {'random_crap': 'blah blah'}]])
 
     def test_cleaned_data(self):
         response = self.client.get(
@@ -157,37 +170,53 @@ class NamedWizardTests(object):
             reverse(self.wizard_urlname,
                     kwargs={'step': response.context['wizard']['steps'].current}),
             self.wizard_step_data[0])
-        response = self.client.get(response['Location'])
+        response = self.client.get(response.url)
         self.assertEqual(response.status_code, 200)
 
+        post_data = self.wizard_step_data[1]
+        post_data['form2-file1'] = open(__file__, 'rb')
         response = self.client.post(
             reverse(self.wizard_urlname,
                     kwargs={'step': response.context['wizard']['steps'].current}),
-            self.wizard_step_data[1])
-        response = self.client.get(response['Location'])
+            post_data)
+        response = self.client.get(response.url)
         self.assertEqual(response.status_code, 200)
+
+        step2_url = reverse(self.wizard_urlname, kwargs={'step': 'form2'})
+        response = self.client.get(step2_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['wizard']['steps'].current, 'form2')
+        with open(__file__, 'rb') as f:
+            self.assertEqual(
+                response.context['wizard']['form'].files['form2-file1'].read(),
+                f.read())
 
         response = self.client.post(
             reverse(self.wizard_urlname,
                     kwargs={'step': response.context['wizard']['steps'].current}),
             self.wizard_step_data[2])
-        response = self.client.get(response['Location'])
+        response = self.client.get(response.url)
         self.assertEqual(response.status_code, 200)
 
         response = self.client.post(
             reverse(self.wizard_urlname,
                     kwargs={'step': response.context['wizard']['steps'].current}),
             self.wizard_step_data[3])
-        response = self.client.get(response['Location'])
+        response = self.client.get(response.url)
         self.assertEqual(response.status_code, 200)
 
+        all_data = response.context['all_cleaned_data']
+        with open(__file__, 'rb') as f:
+            self.assertEqual(all_data['file1'].read(), f.read())
+        all_data['file1'].close()
+        del all_data['file1']
         self.assertEqual(
-            response.context['all_cleaned_data'],
-            {'name': u'Pony', 'thirsty': True, 'user': self.testuser,
-             'address1': u'123 Main St', 'address2': u'Djangoland',
-             'random_crap': u'blah blah', 'formset-form4': [
-                 {'random_crap': u'blah blah'},
-                 {'random_crap': u'blah blah'}
+            all_data,
+            {'name': 'Pony', 'thirsty': True, 'user': self.testuser,
+             'address1': '123 Main St', 'address2': 'Djangoland',
+             'random_crap': 'blah blah', 'formset-form4': [
+                 {'random_crap': 'blah blah'},
+                 {'random_crap': 'blah blah'}
              ]})
 
     def test_manipulated_data(self):
@@ -199,21 +228,24 @@ class NamedWizardTests(object):
             reverse(self.wizard_urlname,
                     kwargs={'step': response.context['wizard']['steps'].current}),
             self.wizard_step_data[0])
-        response = self.client.get(response['Location'])
+        response = self.client.get(response.url)
         self.assertEqual(response.status_code, 200)
 
+        post_data = self.wizard_step_data[1]
+        post_data['form2-file1'].close()
+        post_data['form2-file1'] = open(__file__, 'rb')
         response = self.client.post(
             reverse(self.wizard_urlname,
                     kwargs={'step': response.context['wizard']['steps'].current}),
-            self.wizard_step_data[1])
-        response = self.client.get(response['Location'])
+            post_data)
+        response = self.client.get(response.url)
         self.assertEqual(response.status_code, 200)
 
         response = self.client.post(
             reverse(self.wizard_urlname,
                     kwargs={'step': response.context['wizard']['steps'].current}),
             self.wizard_step_data[2])
-        loc = response['Location']
+        loc = response.url
         response = self.client.get(loc)
         self.assertEqual(response.status_code, 200, loc)
 
@@ -232,7 +264,7 @@ class NamedWizardTests(object):
         response = self.client.post(
             reverse(self.wizard_urlname, kwargs={'step': 'form1'}),
             self.wizard_step_data[0])
-        response = self.client.get(response['Location'])
+        response = self.client.get(response.url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['wizard']['steps'].current, 'form2')
 
@@ -240,10 +272,12 @@ class NamedWizardTests(object):
             '%s?reset=1' % reverse('%s_start' % self.wizard_urlname))
         self.assertEqual(response.status_code, 302)
 
-        response = self.client.get(response['Location'])
+        response = self.client.get(response.url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['wizard']['steps'].current, 'form1')
 
+
+@skipIfCustomUser
 class NamedSessionWizardTests(NamedWizardTests, TestCase):
     wizard_urlname = 'nwiz_session'
     wizard_step_1_data = {
@@ -274,6 +308,8 @@ class NamedSessionWizardTests(NamedWizardTests, TestCase):
         }
     )
 
+
+@skipIfCustomUser
 class NamedCookieWizardTests(NamedWizardTests, TestCase):
     wizard_urlname = 'nwiz_cookie'
     wizard_step_1_data = {
@@ -319,24 +355,28 @@ class NamedFormTests(object):
         instance.render_done(None)
         self.assertEqual(instance.storage.current_step, 'start')
 
-class TestNamedUrlSessionFormWizard(NamedUrlSessionWizardView):
+
+class TestNamedUrlSessionWizardView(NamedUrlSessionWizardView):
 
     def dispatch(self, request, *args, **kwargs):
-        response = super(TestNamedUrlSessionFormWizard, self).dispatch(request, *args, **kwargs)
-        return response, self
-
-class TestNamedUrlCookieFormWizard(NamedUrlCookieWizardView):
-
-    def dispatch(self, request, *args, **kwargs):
-        response = super(TestNamedUrlCookieFormWizard, self).dispatch(request, *args, **kwargs)
+        response = super(TestNamedUrlSessionWizardView, self).dispatch(request, *args, **kwargs)
         return response, self
 
 
+class TestNamedUrlCookieWizardView(NamedUrlCookieWizardView):
+
+    def dispatch(self, request, *args, **kwargs):
+        response = super(TestNamedUrlCookieWizardView, self).dispatch(request, *args, **kwargs)
+        return response, self
+
+
+@skipIfCustomUser
 class NamedSessionFormTests(NamedFormTests, TestCase):
-    formwizard_class = TestNamedUrlSessionFormWizard
+    formwizard_class = TestNamedUrlSessionWizardView
     wizard_urlname = 'nwiz_session'
 
 
+@skipIfCustomUser
 class NamedCookieFormTests(NamedFormTests, TestCase):
-    formwizard_class = TestNamedUrlCookieFormWizard
+    formwizard_class = TestNamedUrlCookieWizardView
     wizard_urlname = 'nwiz_cookie'

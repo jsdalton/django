@@ -2,18 +2,18 @@
 Decorators for views based on HTTP headers.
 """
 
+import logging
 from calendar import timegm
 from functools import wraps
 
 from django.utils.decorators import decorator_from_middleware, available_attrs
 from django.utils.http import http_date, parse_http_date_safe, parse_etags, quote_etag
-from django.utils.log import getLogger
 from django.middleware.http import ConditionalGetMiddleware
 from django.http import HttpResponseNotAllowed, HttpResponseNotModified, HttpResponse
 
 conditional_page = decorator_from_middleware(ConditionalGetMiddleware)
 
-logger = getLogger('django.request')
+logger = logging.getLogger('django.request')
 
 
 def require_http_methods(request_method_list):
@@ -31,7 +31,7 @@ def require_http_methods(request_method_list):
         @wraps(func, assigned=available_attrs(func))
         def inner(request, *args, **kwargs):
             if request.method not in request_method_list:
-                logger.warning('Method Not Allowed (%s): %s' % (request.method, request.path),
+                logger.warning('Method Not Allowed (%s): %s', request.method, request.path,
                     extra={
                         'status_code': 405,
                         'request': request
@@ -74,6 +74,7 @@ def condition(etag_func=None, last_modified_func=None):
     called.
     """
     def decorator(func):
+        @wraps(func, assigned=available_attrs(func))
         def inner(request, *args, **kwargs):
             # Get HTTP request headers
             if_modified_since = request.META.get("HTTP_IF_MODIFIED_SINCE")
@@ -121,7 +122,7 @@ def condition(etag_func=None, last_modified_func=None):
                     if request.method in ("GET", "HEAD"):
                         response = HttpResponseNotModified()
                     else:
-                        logger.warning('Precondition Failed: %s' % request.path,
+                        logger.warning('Precondition Failed: %s', request.path,
                             extra={
                                 'status_code': 412,
                                 'request': request
@@ -130,7 +131,7 @@ def condition(etag_func=None, last_modified_func=None):
                         response = HttpResponse(status=412)
                 elif if_match and ((not res_etag and "*" in etags) or
                         (res_etag and res_etag not in etags)):
-                    logger.warning('Precondition Failed: %s' % request.path,
+                    logger.warning('Precondition Failed: %s', request.path,
                         extra={
                             'status_code': 412,
                             'request': request

@@ -1,5 +1,7 @@
 from django.contrib.gis.gdal.error import OGRException
 
+from django.utils import six
+
 #### OGRGeomType ####
 class OGRGeomType(object):
     "Encapulates OGR Geometry Types."
@@ -26,13 +28,13 @@ class OGRGeomType(object):
               7 + wkb25bit : 'GeometryCollection25D',
               }
     # Reverse type dictionary, keyed by lower-case of the name.
-    _str_types = dict([(v.lower(), k) for k, v in _types.items()])
+    _str_types = dict((v.lower(), k) for k, v in _types.items())
 
     def __init__(self, type_input):
         "Figures out the correct OGR Type based upon the input."
         if isinstance(type_input, OGRGeomType):
             num = type_input.num
-        elif isinstance(type_input, basestring):
+        elif isinstance(type_input, six.string_types):
             type_input = type_input.lower()
             if type_input == 'geometry': type_input='unknown'
             num = self._str_types.get(type_input, None)
@@ -44,7 +46,7 @@ class OGRGeomType(object):
             num = type_input
         else:
             raise TypeError('Invalid OGR input type given.')
-        
+
         # Setting the OGR geometry type number.
         self.num = num
 
@@ -59,7 +61,7 @@ class OGRGeomType(object):
         """
         if isinstance(other, OGRGeomType):
             return self.num == other.num
-        elif isinstance(other, basestring):
+        elif isinstance(other, six.string_types):
             return self.name.lower() == other.lower()
         elif isinstance(other, int):
             return self.num == other

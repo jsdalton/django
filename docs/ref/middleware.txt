@@ -37,7 +37,7 @@ defines. See the :doc:`cache documentation </topics/cache>`.
 Adds a few conveniences for perfectionists:
 
 * Forbids access to user agents in the :setting:`DISALLOWED_USER_AGENTS`
-  setting, which should be a list of strings.
+  setting, which should be a list of compiled regular expression objects.
 
 * Performs URL rewriting based on the :setting:`APPEND_SLASH` and
   :setting:`PREPEND_WWW` settings.
@@ -61,46 +61,46 @@ Adds a few conveniences for perfectionists:
   indexer would treat them as separate URLs -- so it's best practice to
   normalize URLs.
 
-* Sends broken link notification emails to :setting:`MANAGERS` if
-  :setting:`SEND_BROKEN_LINK_EMAILS` is set to ``True``.
-
 * Handles ETags based on the :setting:`USE_ETAGS` setting. If
   :setting:`USE_ETAGS` is set to ``True``, Django will calculate an ETag
   for each request by MD5-hashing the page content, and it'll take care of
   sending ``Not Modified`` responses, if appropriate.
 
-View metadata middleware
-------------------------
+.. class:: BrokenLinkEmailsMiddleware
 
-.. module:: django.middleware.doc
-   :synopsis: Middleware to help your app self-document.
+* Sends broken link notification emails to :setting:`MANAGERS` (see
+  :doc:`/howto/error-reporting`).
 
-.. class:: XViewMiddleware
-
-Sends custom ``X-View`` HTTP headers to HEAD requests that come from IP
-addresses defined in the :setting:`INTERNAL_IPS` setting. This is used by
-Django's :doc:`automatic documentation system </ref/contrib/admin/admindocs>`.
-Depends on :class:`~django.contrib.auth.middleware.AuthenticationMiddleware`.
-
-GZIP middleware
+GZip middleware
 ---------------
 
 .. module:: django.middleware.gzip
-   :synopsis: Middleware to serve gziped content for performance.
+   :synopsis: Middleware to serve GZipped content for performance.
 
 .. class:: GZipMiddleware
 
-Compresses content for browsers that understand gzip compression (all modern
+Compresses content for browsers that understand GZip compression (all modern
 browsers).
 
-It is suggested to place this first in the middleware list, so that the
-compression of the response content is the last thing that happens. Will not
-compress content bodies less than 200 bytes long, when the response code is
-something other than 200, JavaScript files (for IE compatibility), or
-responses that have the ``Content-Encoding`` header already specified.
+This middleware should be placed before any other middleware that need to
+read or write the response body so that compression happens afterward.
 
-GZip compression can be applied to individual views using the
-:func:`~django.views.decorators.http.gzip_page()` decorator.
+It will NOT compress content if any of the following are true:
+
+* The content body is less than 200 bytes long.
+
+* The response has already set the ``Content-Encoding`` header.
+
+* The request (the browser) hasn't sent an ``Accept-Encoding`` header
+  containing ``gzip``.
+
+* The request is from Internet Explorer and the ``Content-Type`` header
+  contains ``javascript`` or starts with anything other than ``text/``.
+  We do this to avoid a bug in early versions of IE that caused decompression
+  not to be performed on certain content types.
+
+You can apply GZip compression to individual views using the
+:func:`~django.views.decorators.gzip.gzip_page()` decorator.
 
 Conditional GET middleware
 --------------------------
@@ -113,7 +113,7 @@ Conditional GET middleware
 Handles conditional GET operations. If the response has a ``ETag`` or
 ``Last-Modified`` header, and the request has ``If-None-Match`` or
 ``If-Modified-Since``, the response is replaced by an
-:class:`~django.http.HttpNotModified`.
+:class:`~django.http.HttpResponseNotModified`.
 
 Also sets the ``Date`` and ``Content-Length`` response-headers.
 
@@ -135,7 +135,7 @@ Locale middleware
 
 Enables language selection based on data from the request. It customizes
 content for each user. See the :doc:`internationalization documentation
-</topics/i18n/index>`.
+</topics/i18n/translation>`.
 
 Message middleware
 ------------------
@@ -144,9 +144,6 @@ Message middleware
    :synopsis: Message middleware.
 
 .. class:: MessageMiddleware
-
-.. versionadded:: 1.2
-   ``MessageMiddleware`` was added.
 
 Enables cookie- and session-based message support. See the
 :doc:`messages documentation </ref/contrib/messages>`.
@@ -171,8 +168,8 @@ Authentication middleware
 .. class:: AuthenticationMiddleware
 
 Adds the ``user`` attribute, representing the currently-logged-in user, to
-every incoming ``HttpRequest`` object. See :doc:`Authentication in Web requests
-</topics/auth>`.
+every incoming ``HttpRequest`` object. See :ref:`Authentication in Web requests
+<auth-web-requests>`.
 
 CSRF protection middleware
 --------------------------
@@ -181,7 +178,7 @@ CSRF protection middleware
    :synopsis: Middleware adding protection against Cross Site Request
               Forgeries.
 
-.. class:: CsrfMiddleware
+.. class:: CsrfViewMiddleware
 
 Adds protection against Cross Site Request Forgeries by adding hidden form
 fields to POST forms and checking requests for the correct value. See the
@@ -195,9 +192,14 @@ Transaction middleware
 
 .. class:: TransactionMiddleware
 
-Binds commit and rollback to the request/response phase. If a view function
-runs successfully, a commit is done. If it fails with an exception, a rollback
-is done.
+.. versionchanged:: 1.6
+
+    ``TransactionMiddleware`` is deprecated. The documentation of transactions
+    contains :ref:`upgrade instructions <transactions-upgrading-from-1.5>`.
+
+Binds commit and rollback of the default database to the request/response
+phase. If a view function runs successfully, a commit is done. If it fails with
+an exception, a rollback is done.
 
 The order of this middleware in the stack is important: middleware modules
 running outside of it run with commit-on-save - the default Django behavior.
@@ -213,8 +215,5 @@ X-Frame-Options middleware
    :synopsis: Clickjacking protection
 
 .. class:: XFrameOptionsMiddleware
-
-.. versionadded:: 1.4
-   ``XFrameOptionsMiddleware`` was added.
 
 Simple :doc:`clickjacking protection via the X-Frame-Options header </ref/clickjacking/>`.

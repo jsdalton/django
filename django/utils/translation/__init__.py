@@ -1,12 +1,11 @@
 """
 Internationalization support.
 """
-import warnings
-from os import path
+from __future__ import unicode_literals
 
-from django.utils.encoding import force_unicode
+from django.utils.encoding import force_text
 from django.utils.functional import lazy
-from django.utils.importlib import import_module
+from django.utils import six
 
 
 __all__ = [
@@ -14,7 +13,6 @@ __all__ = [
     'get_language',  'get_language_from_request',
     'get_language_info', 'get_language_bidi',
     'check_for_language', 'to_locale', 'templatize', 'string_concat',
-    'get_date_formats', 'get_partial_date_formats',
     'gettext', 'gettext_lazy', 'gettext_noop',
     'ugettext', 'ugettext_lazy', 'ugettext_noop',
     'ngettext', 'ngettext_lazy',
@@ -22,6 +20,11 @@ __all__ = [
     'pgettext', 'pgettext_lazy',
     'npgettext', 'npgettext_lazy',
 ]
+
+
+class TranslatorCommentWarning(SyntaxWarning):
+    pass
+
 
 # Here be dragons, so a short explanation of the logic won't hurt:
 # We are trying to solve two problems: (1) access settings, in particular
@@ -48,20 +51,6 @@ class Trans(object):
         from django.conf import settings
         if settings.USE_I18N:
             from django.utils.translation import trans_real as trans
-            # Make sure the project's locale dir isn't in LOCALE_PATHS
-            if settings.SETTINGS_MODULE is not None:
-                parts = settings.SETTINGS_MODULE.split('.')
-                project = import_module(parts[0])
-                project_locale_path = path.normpath(
-                    path.join(path.dirname(project.__file__), 'locale'))
-                normalized_locale_paths = [path.normpath(locale_path)
-                    for locale_path in settings.LOCALE_PATHS]
-                if (path.isdir(project_locale_path) and
-                        not project_locale_path in normalized_locale_paths):
-                    warnings.warn("Translations in the project directory "
-                                  "aren't supported anymore. Use the "
-                                  "LOCALE_PATHS setting instead.",
-                                  DeprecationWarning)
         else:
             from django.utils.translation import trans_null as trans
         setattr(self, real_name, getattr(trans, real_name))
@@ -95,12 +84,47 @@ def pgettext(context, message):
 def npgettext(context, singular, plural, number):
     return _trans.npgettext(context, singular, plural, number)
 
-ngettext_lazy = lazy(ngettext, str)
 gettext_lazy = lazy(gettext, str)
-ungettext_lazy = lazy(ungettext, unicode)
-ugettext_lazy = lazy(ugettext, unicode)
-pgettext_lazy = lazy(pgettext, unicode)
-npgettext_lazy = lazy(npgettext, unicode)
+ugettext_lazy = lazy(ugettext, six.text_type)
+pgettext_lazy = lazy(pgettext, six.text_type)
+
+def lazy_number(func, resultclass, number=None, **kwargs):
+    if isinstance(number, int):
+        kwargs['number'] = number
+        proxy = lazy(func, resultclass)(**kwargs)
+    else:
+        class NumberAwareString(resultclass):
+            def __mod__(self, rhs):
+                if isinstance(rhs, dict) and number:
+                    try:
+                        number_value = rhs[number]
+                    except KeyError:
+                        raise KeyError('Your dictionary lacks key \'%s\'. '
+                            'Please provide it, because it is required to '
+                            'determine whether string is singular or plural.'
+                            % number)
+                else:
+                    number_value = rhs
+                kwargs['number'] = number_value
+                translated = func(**kwargs)
+                try:
+                    translated = translated % rhs
+                except TypeError:
+                    # String doesn't contain a placeholder for the number
+                    pass
+                return translated
+
+        proxy = lazy(lambda **kwargs: NumberAwareString(), NumberAwareString)(**kwargs)
+    return proxy
+
+def ngettext_lazy(singular, plural, number=None):
+    return lazy_number(ngettext, str, singular=singular, plural=plural, number=number)
+
+def ungettext_lazy(singular, plural, number=None):
+    return lazy_number(ungettext, six.text_type, singular=singular, plural=plural, number=number)
+
+def npgettext_lazy(context, singular, plural, number=None):
+    return lazy_number(npgettext, six.text_type, context=context, singular=singular, plural=plural, number=number)
 
 def activate(language):
     return _trans.activate(language)
@@ -132,23 +156,17 @@ def get_language():
 def get_language_bidi():
     return _trans.get_language_bidi()
 
-def get_date_formats():
-    return _trans.get_date_formats()
-
-def get_partial_date_formats():
-    return _trans.get_partial_date_formats()
-
 def check_for_language(lang_code):
     return _trans.check_for_language(lang_code)
 
 def to_locale(language):
     return _trans.to_locale(language)
 
-def get_language_from_request(request):
-    return _trans.get_language_from_request(request)
+def get_language_from_request(request, check_path=False):
+    return _trans.get_language_from_request(request, check_path)
 
-def get_language_from_path(path):
-    return _trans.get_language_from_path(path)
+def get_language_from_path(path, supported=None):
+    return _trans.get_language_from_path(path, supported=supported)
 
 def templatize(src, origin=None):
     return _trans.templatize(src, origin)
@@ -161,12 +179,18 @@ def _string_concat(*strings):
     Lazy variant of string concatenation, needed for translations that are
     constructed from multiple parts.
     """
-    return u''.join([force_unicode(s) for s in strings])
-string_concat = lazy(_string_concat, unicode)
+    return ''.join([force_text(s) for s in strings])
+string_concat = lazy(_string_concat, six.text_type)
 
 def get_language_info(lang_code):
     from django.conf.locale import LANG_INFO
     try:
         return LANG_INFO[lang_code]
     except KeyError:
-        raise KeyError("Unknown language code %r." % lang_code)
+        if '-' not in lang_code:
+            raise KeyError("Unknown language code %s." % lang_code)
+        generic_lang_code = lang_code.split('-')[0]
+        try:
+            return LANG_INFO[generic_lang_code]
+        except KeyError:
+            raise KeyError("Unknown language code %s and %s." % (lang_code, generic_lang_code))

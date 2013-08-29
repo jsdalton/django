@@ -27,7 +27,8 @@ Mail is sent using the SMTP host and port specified in the
 :setting:`EMAIL_HOST` and :setting:`EMAIL_PORT` settings. The
 :setting:`EMAIL_HOST_USER` and :setting:`EMAIL_HOST_PASSWORD` settings, if
 set, are used to authenticate to the SMTP server, and the
-:setting:`EMAIL_USE_TLS` setting controls whether a secure connection is used.
+:setting:`EMAIL_USE_TLS` and :setting:`EMAIL_USE_SSL` settings control whether
+a secure connection is used.
 
 .. note::
 
@@ -37,7 +38,7 @@ set, are used to authenticate to the SMTP server, and the
 send_mail()
 ===========
 
-.. function:: send_mail(subject, message, from_email, recipient_list, fail_silently=False, auth_user=None, auth_password=None, connection=None)
+.. function:: send_mail(subject, message, from_email, recipient_list, fail_silently=False, auth_user=None, auth_password=None, connection=None, html_message=None)
 
 The simplest way to send email is using
 ``django.core.mail.send_mail()``.
@@ -65,6 +66,14 @@ are required.
   If unspecified, an instance of the default backend will be used.
   See the documentation on :ref:`Email backends <topic-email-backends>`
   for more details.
+* ``html_message``: If ``html_message`` is provided, the resulting email will be a
+  :mimetype:`multipart/alternative` email with ``message`` as the
+  :mimetype:`text/plain` content type and ``html_message`` as the
+  :mimetype:`text/html` content type.
+
+.. versionadded:: 1.7
+
+    The ``html_message`` parameter was added.
 
 send_mass_mail()
 ================
@@ -118,8 +127,6 @@ The "From:" header of the email will be the value of the
 :setting:`SERVER_EMAIL` setting.
 
 This method exists for convenience and readability.
-
-.. versionchanged:: 1.3
 
 If ``html_message`` is provided, the resulting email will be a
 :mimetype:`multipart/alternative` email with ``message`` as the
@@ -192,7 +199,7 @@ from the request's POST data, sends that to admin@example.com and redirects to
             # to get proper validation errors.
             return HttpResponse('Make sure all fields are entered and valid.')
 
-.. _Header injection: http://www.nyphp.org/phundamentals/email_header_injection.php
+.. _Header injection: http://www.nyphp.org/phundamentals/8_Preventing-Email-Header-Injection
 
 .. _emailmessage-and-smtpconnection:
 
@@ -235,9 +242,6 @@ The :class:`~django.core.mail.EmailMessage` class is initialized with the
 following parameters (in the given order, if positional arguments are used).
 All parameters are optional and can be set at any time prior to calling the
 ``send()`` method.
-
-.. versionchanged:: 1.3
-   The ``cc`` argument was added.
 
 * ``subject``: The subject line of the email.
 
@@ -290,8 +294,8 @@ The class has the following methods:
   override this method to put the content you want into the MIME object.
 
 * ``recipients()`` returns a list of all the recipients of the message,
-  whether they're recorded in the ``to`` or ``bcc`` attributes. This is
-  another method you might need to override when subclassing, because the
+  whether they're recorded in the ``to``, ``cc`` or ``bcc`` attributes. This
+  is another method you might need to override when subclassing, because the
   SMTP server needs to be told the full list of recipients when the message
   is sent. If you add another way to specify recipients in your class, they
   need to be returned from this method as well.
@@ -315,14 +319,24 @@ The class has the following methods:
 
        message.attach('design.png', img_data, 'image/png')
 
+    .. versionchanged:: 1.7
+
+      If you specify a ``mimetype`` of ``message/rfc822``, it will also accept
+      :class:`django.core.mail.EmailMessage` and :py:class:`email.message.Message`.
+
+      In addition, ``message/rfc822`` attachments will no longer be
+      base64-encoded in violation of :rfc:`2046#section-5.2.1`, which can cause
+      issues with displaying the attachments in `Evolution`__ and `Thunderbird`__.
+
+      __ https://bugzilla.gnome.org/show_bug.cgi?id=651197
+      __ https://bugzilla.mozilla.org/show_bug.cgi?id=333880
+
 * ``attach_file()`` creates a new attachment using a file from your
   filesystem. Call it with the path of the file to attach and, optionally,
   the MIME type to use for the attachment. If the MIME type is omitted, it
   will be guessed from the filename. The simplest use would be::
 
     message.attach_file('/images/weather_map.png')
-
-.. _DEFAULT_FROM_EMAIL: ../settings/#default-from-email
 
 Sending alternative content types
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -364,8 +378,6 @@ subtype. For example::
 
 Email backends
 ==============
-
-.. versionadded:: 1.2
 
 The actual sending of an email is handled by the email backend.
 
@@ -415,24 +427,13 @@ SMTP backend
 This is the default backend. Email will be sent through a SMTP server.
 The server address and authentication credentials are set in the
 :setting:`EMAIL_HOST`, :setting:`EMAIL_PORT`, :setting:`EMAIL_HOST_USER`,
-:setting:`EMAIL_HOST_PASSWORD` and :setting:`EMAIL_USE_TLS` settings in your
-settings file.
+:setting:`EMAIL_HOST_PASSWORD`, :setting:`EMAIL_USE_TLS` and
+:setting:`EMAIL_USE_SSL` settings in your settings file.
 
 The SMTP backend is the default configuration inherited by Django. If you
 want to specify it explicitly, put the following in your settings::
 
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-
-.. admonition:: SMTPConnection objects
-
-    Prior to version 1.2, Django provided a
-    :class:`~django.core.mail.SMTPConnection` class. This class provided a way
-    to directly control the use of SMTP to send email. This class has been
-    deprecated in favor of the generic email backend API.
-
-    For backwards compatibility :class:`~django.core.mail.SMTPConnection` is
-    still available in ``django.core.mail`` as an alias for the SMTP backend.
-    New code should use :meth:`~django.core.mail.get_connection` instead.
 
 .. _topic-email-console-backend:
 
@@ -607,18 +608,3 @@ the email body. You then only need to set the :setting:`EMAIL_HOST` and
 
 For a more detailed discussion of testing and processing of emails locally,
 see the Python documentation for the :mod:`smtpd` module.
-
-SMTPConnection
-==============
-
-.. class:: SMTPConnection
-
-.. deprecated:: 1.2
-
-The ``SMTPConnection`` class has been deprecated in favor of the generic email
-backend API.
-
-For backwards compatibility ``SMTPConnection`` is still available in
-``django.core.mail`` as an alias for the :ref:`SMTP backend
-<topic-email-smtp-backend>`. New code should use
-:meth:`~django.core.mail.get_connection` instead.

@@ -1,16 +1,19 @@
 import os
 import errno
-import urlparse
+try:
+    from urllib.parse import urljoin
+except ImportError:     # Python 2
+    from urlparse import urljoin
 import itertools
 from datetime import datetime
 
 from django.conf import settings
-from django.core.exceptions import ImproperlyConfigured, SuspiciousOperation
+from django.core.exceptions import SuspiciousFileOperation
 from django.core.files import locks, File
 from django.core.files.move import file_move_safe
-from django.utils.encoding import force_unicode, filepath_to_uri
+from django.utils.encoding import force_text, filepath_to_uri
 from django.utils.functional import LazyObject
-from django.utils.importlib import import_module
+from django.utils.module_loading import import_by_path
 from django.utils.text import get_valid_filename
 from django.utils._os import safe_join, abspathu
 
@@ -34,18 +37,22 @@ class Storage(object):
 
     def save(self, name, content):
         """
-        Saves new content to the file specified by name. The content should be a
-        proper File object, ready to be read from the beginning.
+        Saves new content to the file specified by name. The content should be
+        a proper File object or any python file-like object, ready to be read
+        from the beginning.
         """
         # Get the proper name for the file, as it will actually be saved.
         if name is None:
             name = content.name
 
+        if not hasattr(content, 'chunks'):
+            content = File(content)
+
         name = self.get_available_name(name)
         name = self._save(name, content)
 
         # Store filenames with forward slashes, even on Windows
-        return force_unicode(name.replace('\\', '/'))
+        return force_text(name.replace('\\', '/'))
 
     # These methods are part of the public API, with default implementations.
 
@@ -69,7 +76,7 @@ class Storage(object):
         count = itertools.count(1)
         while self.exists(name):
             # file_ext includes the dot.
-            name = os.path.join(dir_name, "%s_%s%s" % (file_root, count.next(), file_ext))
+            name = os.path.join(dir_name, "%s_%s%s" % (file_root, next(count), file_ext))
 
         return name
 
@@ -165,8 +172,17 @@ class FileSystemStorage(Storage):
         directory = os.path.dirname(full_path)
         if not os.path.exists(directory):
             try:
-                os.makedirs(directory)
-            except OSError, e:
+                if settings.FILE_UPLOAD_DIRECTORY_PERMISSIONS is not None:
+                    # os.makedirs applies the global umask, so we reset it,
+                    # for consistency with FILE_UPLOAD_PERMISSIONS behavior.
+                    old_umask = os.umask(0)
+                    try:
+                        os.makedirs(directory, settings.FILE_UPLOAD_DIRECTORY_PERMISSIONS)
+                    finally:
+                        os.umask(old_umask)
+                else:
+                    os.makedirs(directory)
+            except OSError as e:
                 if e.errno != errno.EEXIST:
                     raise
         if not os.path.isdir(directory):
@@ -189,15 +205,25 @@ class FileSystemStorage(Storage):
                 else:
                     # This fun binary flag incantation makes os.open throw an
                     # OSError if the file already exists before we open it.
-                    fd = os.open(full_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0))
+                    flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                             getattr(os, 'O_BINARY', 0))
+                    # The current umask value is masked out by os.open!
+                    fd = os.open(full_path, flags, 0o666)
+                    _file = None
                     try:
                         locks.lock(fd, locks.LOCK_EX)
                         for chunk in content.chunks():
-                            os.write(fd, chunk)
+                            if _file is None:
+                                mode = 'wb' if isinstance(chunk, bytes) else 'wt'
+                                _file = os.fdopen(fd, mode)
+                            _file.write(chunk)
                     finally:
                         locks.unlock(fd)
-                        os.close(fd)
-            except OSError, e:
+                        if _file is not None:
+                            _file.close()
+                        else:
+                            os.close(fd)
+            except OSError as e:
                 if e.errno == errno.EEXIST:
                     # Ooops, the file exists. We need a new file name.
                     name = self.get_available_name(name)
@@ -214,6 +240,7 @@ class FileSystemStorage(Storage):
         return name
 
     def delete(self, name):
+        assert name, "The name argument is not allowed to be empty."
         name = self.path(name)
         # If the file exists, delete it from the filesystem.
         # Note that there is a race between os.path.exists and os.remove:
@@ -222,7 +249,7 @@ class FileSystemStorage(Storage):
         if os.path.exists(name):
             try:
                 os.remove(name)
-            except OSError, e:
+            except OSError as e:
                 if e.errno != errno.ENOENT:
                     raise
 
@@ -243,7 +270,7 @@ class FileSystemStorage(Storage):
         try:
             path = safe_join(self.location, name)
         except ValueError:
-            raise SuspiciousOperation("Attempted access to '%s' denied." % name)
+            raise SuspiciousFileOperation("Attempted access to '%s' denied." % name)
         return os.path.normpath(path)
 
     def size(self, name):
@@ -252,7 +279,7 @@ class FileSystemStorage(Storage):
     def url(self, name):
         if self.base_url is None:
             raise ValueError("This file is not accessible via a URL.")
-        return urlparse.urljoin(self.base_url, filepath_to_uri(name))
+        return urljoin(self.base_url, filepath_to_uri(name))
 
     def accessed_time(self, name):
         return datetime.fromtimestamp(os.path.getatime(self.path(name)))
@@ -264,21 +291,7 @@ class FileSystemStorage(Storage):
         return datetime.fromtimestamp(os.path.getmtime(self.path(name)))
 
 def get_storage_class(import_path=None):
-    if import_path is None:
-        import_path = settings.DEFAULT_FILE_STORAGE
-    try:
-        dot = import_path.rindex('.')
-    except ValueError:
-        raise ImproperlyConfigured("%s isn't a storage module." % import_path)
-    module, classname = import_path[:dot], import_path[dot+1:]
-    try:
-        mod = import_module(module)
-    except ImportError, e:
-        raise ImproperlyConfigured('Error importing storage module %s: "%s"' % (module, e))
-    try:
-        return getattr(mod, classname)
-    except AttributeError:
-        raise ImproperlyConfigured('Storage module "%s" does not define a "%s" class.' % (module, classname))
+    return import_by_path(import_path or settings.DEFAULT_FILE_STORAGE)
 
 class DefaultStorage(LazyObject):
     def _setup(self):

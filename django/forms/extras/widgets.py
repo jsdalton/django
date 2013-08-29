@@ -1,6 +1,7 @@
 """
 Extra HTML Widget classes
 """
+from __future__ import unicode_literals
 
 import datetime
 import re
@@ -8,8 +9,10 @@ import re
 from django.forms.widgets import Widget, Select
 from django.utils import datetime_safe
 from django.utils.dates import MONTHS
+from django.utils.encoding import force_str
 from django.utils.safestring import mark_safe
 from django.utils.formats import get_format
+from django.utils import six
 from django.conf import settings
 
 __all__ = ('SelectDateWidget',)
@@ -48,26 +51,33 @@ class SelectDateWidget(Widget):
     day_field = '%s_day'
     year_field = '%s_year'
 
-    def __init__(self, attrs=None, years=None, required=True):
-        # years is an optional list/tuple of years to use in the "year" select box.
+    def __init__(self, attrs=None, years=None, required=True, months=None):
         self.attrs = attrs or {}
         self.required = required
+
+        # Optional list or tuple of years to use in the "year" select box.
         if years:
             self.years = years
         else:
             this_year = datetime.date.today().year
             self.years = range(this_year, this_year+10)
 
+        # Optional dict of months to use in the "month" select box.
+        if months:
+            self.months = months
+        else:
+            self.months = MONTHS
+
     def render(self, name, value, attrs=None):
         try:
             year_val, month_val, day_val = value.year, value.month, value.day
         except AttributeError:
             year_val = month_val = day_val = None
-            if isinstance(value, basestring):
+            if isinstance(value, six.string_types):
                 if settings.USE_L10N:
                     try:
                         input_format = get_format('DATE_INPUT_FORMATS')[0]
-                        v = datetime.datetime.strptime(value, input_format)
+                        v = datetime.datetime.strptime(force_str(value), input_format)
                         year_val, month_val, day_val = v.year, v.month, v.day
                     except ValueError:
                         pass
@@ -77,7 +87,7 @@ class SelectDateWidget(Widget):
                         year_val, month_val, day_val = [int(v) for v in match.groups()]
         choices = [(i, i) for i in self.years]
         year_html = self.create_select(name, self.year_field, value, year_val, choices)
-        choices = MONTHS.items()
+        choices = list(six.iteritems(self.months))
         month_html = self.create_select(name, self.month_field, value, month_val, choices)
         choices = [(i, i) for i in range(1, 32)]
         day_html = self.create_select(name, self.day_field, value, day_val,  choices)
@@ -90,7 +100,7 @@ class SelectDateWidget(Widget):
                 output.append(month_html)
             elif field == 'day':
                 output.append(day_html)
-        return mark_safe(u'\n'.join(output))
+        return mark_safe('\n'.join(output))
 
     def id_for_label(self, id_):
         first_select = None
@@ -101,7 +111,6 @@ class SelectDateWidget(Widget):
             return '%s_%s' % (id_, first_select)
         else:
             return '%s_month' % id_
-    id_for_label = classmethod(id_for_label)
 
     def value_from_datadict(self, data, files, name):
         y = data.get(self.year_field % name)

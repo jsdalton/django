@@ -1,14 +1,18 @@
 "Memcached cache backend"
 
 import time
+import pickle
 from threading import local
 
-from django.core.cache.backends.base import BaseCache, InvalidCacheBackendError
+from django.core.cache.backends.base import BaseCache, DEFAULT_TIMEOUT
+
+from django.utils import six
+from django.utils.encoding import force_str
 
 class BaseMemcachedCache(BaseCache):
     def __init__(self, server, params, library, value_not_found_exception):
         super(BaseMemcachedCache, self).__init__(params)
-        if isinstance(server, basestring):
+        if isinstance(server, six.string_types):
             self._servers = server.split(';')
         else:
             self._servers = server
@@ -32,12 +36,22 @@ class BaseMemcachedCache(BaseCache):
 
         return self._client
 
-    def _get_memcache_timeout(self, timeout):
+    def _get_memcache_timeout(self, timeout=DEFAULT_TIMEOUT):
         """
         Memcached deals with long (> 30 days) timeouts in a special
         way. Call this function to obtain a safe value for your timeout.
         """
-        timeout = timeout or self.default_timeout
+        if timeout == DEFAULT_TIMEOUT:
+            return self.default_timeout
+
+        if timeout is None:
+            # Using 0 in memcache sets a non-expiring timeout.
+            return 0
+        elif int(timeout) == 0:
+            # Other cache backends treat 0 as set-and-expire. To achieve this
+            # in memcache backends, a negative timeout must be passed.
+            timeout = -1
+
         if timeout > 2592000: # 60*60*24*30, 30 days
             # See http://code.google.com/p/memcached/wiki/FAQ
             # "You can set expire times up to 30 days in the future. After that
@@ -48,7 +62,11 @@ class BaseMemcachedCache(BaseCache):
             timeout += int(time.time())
         return int(timeout)
 
-    def add(self, key, value, timeout=0, version=None):
+    def make_key(self, key, version=None):
+        # Python 2 memcache requires the key to be a byte string.
+        return force_str(super(BaseMemcachedCache, self).make_key(key, version))
+
+    def add(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
         key = self.make_key(key, version=version)
         return self._cache.add(key, value, self._get_memcache_timeout(timeout))
 
@@ -59,7 +77,7 @@ class BaseMemcachedCache(BaseCache):
             return default
         return val
 
-    def set(self, key, value, timeout=0, version=None):
+    def set(self, key, value, timeout=DEFAULT_TIMEOUT, version=None):
         key = self.make_key(key, version=version)
         self._cache.set(key, value, self._get_memcache_timeout(timeout))
 
@@ -68,7 +86,7 @@ class BaseMemcachedCache(BaseCache):
         self._cache.delete(key)
 
     def get_many(self, keys, version=None):
-        new_keys = map(lambda x: self.make_key(x, version=version), keys)
+        new_keys = [self.make_key(x, version=version) for x in keys]
         ret = self._cache.get_multi(new_keys)
         if ret:
             _ = {}
@@ -83,6 +101,9 @@ class BaseMemcachedCache(BaseCache):
 
     def incr(self, key, delta=1, version=None):
         key = self.make_key(key, version=version)
+        # memcached doesn't support a negative delta
+        if delta < 0:
+            return self._cache.decr(key, -delta)
         try:
             val = self._cache.incr(key, delta)
 
@@ -98,6 +119,9 @@ class BaseMemcachedCache(BaseCache):
 
     def decr(self, key, delta=1, version=None):
         key = self.make_key(key, version=version)
+        # memcached doesn't support a negative delta
+        if delta < 0:
+            return self._cache.incr(key, -delta)
         try:
             val = self._cache.decr(key, delta)
 
@@ -111,7 +135,7 @@ class BaseMemcachedCache(BaseCache):
             raise ValueError("Key '%s' not found" % key)
         return val
 
-    def set_many(self, data, timeout=0, version=None):
+    def set_many(self, data, timeout=DEFAULT_TIMEOUT, version=None):
         safe_data = {}
         for key, value in data.items():
             key = self.make_key(key, version=version)
@@ -125,23 +149,6 @@ class BaseMemcachedCache(BaseCache):
     def clear(self):
         self._cache.flush_all()
 
-class CacheClass(BaseMemcachedCache):
-    def __init__(self, server, params):
-        import warnings
-        warnings.warn(
-            "memcached.CacheClass has been split into memcached.MemcachedCache and memcached.PyLibMCCache. Please update your cache backend setting.",
-            PendingDeprecationWarning
-        )
-        try:
-            import memcache
-        except:
-            raise InvalidCacheBackendError(
-                "Memcached cache backend requires either the 'memcache' or 'cmemcache' library"
-                )
-        super(CacheClass, self).__init__(server, params,
-                                         library=memcache,
-                                         value_not_found_exception=ValueError)
-
 class MemcachedCache(BaseMemcachedCache):
     "An implementation of a cache binding using python-memcached"
     def __init__(self, server, params):
@@ -149,6 +156,12 @@ class MemcachedCache(BaseMemcachedCache):
         super(MemcachedCache, self).__init__(server, params,
                                              library=memcache,
                                              value_not_found_exception=ValueError)
+
+    @property
+    def _cache(self):
+        if getattr(self, '_client', None) is None:
+            self._client = self._lib.Client(self._servers, pickleProtocol=pickle.HIGHEST_PROTOCOL)
+        return self._client
 
 class PyLibMCCache(BaseMemcachedCache):
     "An implementation of a cache binding using pylibmc"

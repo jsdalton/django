@@ -18,6 +18,23 @@ Documentation changes generally come in two forms:
 This section explains how writers can craft their documentation changes
 in the most useful and least error-prone ways.
 
+Getting the raw documentation
+-----------------------------
+
+Though Django's documentation is intended to be read as HTML at
+https://docs.djangoproject.com/, we edit it as a collection of text files for
+maximum flexibility. These files live in the top-level ``docs/`` directory of a
+Django release.
+
+If you'd like to start contributing to our docs, get the development version of
+Django from the source code repository
+(see :ref:`installing-development-version`). The development version has the
+latest-and-greatest documentation, just as it has latest-and-greatest code.
+We also backport documentation fixes and improvements, at the discretion of the
+committer, to the last release branch. That's because it's highly advantageous
+to have the docs for the last release be up-to-date and correct (see
+:ref:`differences-between-doc-versions`).
+
 Getting started with Sphinx
 ---------------------------
 
@@ -29,7 +46,7 @@ __ http://sphinx.pocoo.org/
 __ http://docutils.sourceforge.net/
 
 To actually build the documentation locally, you'll currently need to install
-Sphinx -- ``easy_install Sphinx`` should do the trick.
+Sphinx -- ``sudo pip install Sphinx`` should do the trick.
 
 .. note::
 
@@ -148,9 +165,9 @@ __ http://sphinx.pocoo.org/markup/desc.html
 
 * ``django-admin`` commands::
 
-        .. django-admin:: syncdb
+        .. django-admin:: migrate
 
-  To link, use ``:djadmin:`syncdb```.
+  To link, use ``:djadmin:`migrate```.
 
 * ``django-admin`` command-line options::
 
@@ -171,8 +188,8 @@ Our policy for new features is:
     release, not the development version.
 
 Our preferred way for marking new features is by prefacing the features'
-documentation with: "``.. versionadded:: X.Y``", followed by an optional one
-line comment and a mandatory blank line.
+documentation with: "``.. versionadded:: X.Y``", followed by a a mandatory
+blank line and an optional content (indented).
 
 General improvements, or other changes to the APIs that should be emphasized
 should use the "``.. versionchanged:: X.Y``" directive (with the same format

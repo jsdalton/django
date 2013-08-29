@@ -1,18 +1,21 @@
 """
 Form Widget classes specific to the Django admin site.
 """
+from __future__ import unicode_literals
 
 import copy
+
 from django import forms
 from django.contrib.admin.templatetags.admin_static import static
 from django.core.urlresolvers import reverse
 from django.forms.widgets import RadioFieldRenderer
 from django.forms.util import flatatt
-from django.utils.html import escape
+from django.utils.html import escape, format_html, format_html_join, smart_urlquote
 from django.utils.text import Truncator
 from django.utils.translation import ugettext as _
 from django.utils.safestring import mark_safe
-from django.utils.encoding import force_unicode
+from django.utils.encoding import force_text
+from django.utils import six
 
 
 class FilteredSelectMultiple(forms.SelectMultiple):
@@ -39,12 +42,12 @@ class FilteredSelectMultiple(forms.SelectMultiple):
         if self.is_stacked:
             attrs['class'] += 'stacked'
         output = [super(FilteredSelectMultiple, self).render(name, value, attrs, choices)]
-        output.append(u'<script type="text/javascript">addEvent(window, "load", function(e) {')
+        output.append('<script type="text/javascript">addEvent(window, "load", function(e) {')
         # TODO: "id_" is hard-coded here. This should instead use the correct
         # API to determine the ID dynamically.
-        output.append(u'SelectFilter.init("id_%s", "%s", %s, "%s"); });</script>\n'
+        output.append('SelectFilter.init("id_%s", "%s", %s, "%s"); });</script>\n'
             % (name, self.verbose_name.replace('"', '\\"'), int(self.is_stacked), static('admin/')))
-        return mark_safe(u''.join(output))
+        return mark_safe(''.join(output))
 
 class AdminDateWidget(forms.DateInput):
 
@@ -53,8 +56,11 @@ class AdminDateWidget(forms.DateInput):
         js = ["calendar.js", "admin/DateTimeShortcuts.js"]
         return forms.Media(js=[static("admin/js/%s" % path) for path in js])
 
-    def __init__(self, attrs={}, format=None):
-        super(AdminDateWidget, self).__init__(attrs={'class': 'vDateField', 'size': '10'}, format=format)
+    def __init__(self, attrs=None, format=None):
+        final_attrs = {'class': 'vDateField', 'size': '10'}
+        if attrs is not None:
+            final_attrs.update(attrs)
+        super(AdminDateWidget, self).__init__(attrs=final_attrs, format=format)
 
 class AdminTimeWidget(forms.TimeInput):
 
@@ -63,8 +69,11 @@ class AdminTimeWidget(forms.TimeInput):
         js = ["calendar.js", "admin/DateTimeShortcuts.js"]
         return forms.Media(js=[static("admin/js/%s" % path) for path in js])
 
-    def __init__(self, attrs={}, format=None):
-        super(AdminTimeWidget, self).__init__(attrs={'class': 'vTimeField', 'size': '8'}, format=format)
+    def __init__(self, attrs=None, format=None):
+        final_attrs = {'class': 'vTimeField', 'size': '8'}
+        if attrs is not None:
+            final_attrs.update(attrs)
+        super(AdminTimeWidget, self).__init__(attrs=final_attrs, format=format)
 
 class AdminSplitDateTime(forms.SplitDateTimeWidget):
     """
@@ -77,24 +86,25 @@ class AdminSplitDateTime(forms.SplitDateTimeWidget):
         forms.MultiWidget.__init__(self, widgets, attrs)
 
     def format_output(self, rendered_widgets):
-        return mark_safe(u'<p class="datetime">%s %s<br />%s %s</p>' % \
-            (_('Date:'), rendered_widgets[0], _('Time:'), rendered_widgets[1]))
+        return format_html('<p class="datetime">{0} {1}<br />{2} {3}</p>',
+                           _('Date:'), rendered_widgets[0],
+                           _('Time:'), rendered_widgets[1])
 
 class AdminRadioFieldRenderer(RadioFieldRenderer):
     def render(self):
         """Outputs a <ul> for this set of radio fields."""
-        return mark_safe(u'<ul%s>\n%s\n</ul>' % (
-            flatatt(self.attrs),
-            u'\n'.join([u'<li>%s</li>' % force_unicode(w) for w in self]))
-        )
+        return format_html('<ul{0}>\n{1}\n</ul>',
+                           flatatt(self.attrs),
+                           format_html_join('\n', '<li>{0}</li>',
+                                            ((force_text(w),) for w in self)))
 
 class AdminRadioSelect(forms.RadioSelect):
     renderer = AdminRadioFieldRenderer
 
 class AdminFileWidget(forms.ClearableFileInput):
-    template_with_initial = (u'<p class="file-upload">%s</p>'
+    template_with_initial = ('<p class="file-upload">%s</p>'
                             % forms.ClearableFileInput.template_with_initial)
-    template_with_clear = (u'<span class="clearable-file-input">%s</span>'
+    template_with_clear = ('<span class="clearable-file-input">%s</span>'
                            % forms.ClearableFileInput.template_with_clear)
 
 def url_params_from_lookup_dict(lookups):
@@ -106,13 +116,15 @@ def url_params_from_lookup_dict(lookups):
     if lookups and hasattr(lookups, 'items'):
         items = []
         for k, v in lookups.items():
+            if callable(v):
+                v = v()
             if isinstance(v, (tuple, list)):
-                v = u','.join([str(x) for x in v])
+                v = ','.join([str(x) for x in v])
             elif isinstance(v, bool):
                 # See django.db.fields.BooleanField.get_prep_lookup
                 v = ('0', '1')[v]
             else:
-                v = unicode(v)
+                v = six.text_type(v)
             items.append((k, v))
         params.update(dict(items))
     return params
@@ -137,26 +149,26 @@ class ForeignKeyRawIdWidget(forms.TextInput):
             # The related object is registered with the same AdminSite
             related_url = reverse('admin:%s_%s_changelist' %
                                     (rel_to._meta.app_label,
-                                    rel_to._meta.module_name),
+                                    rel_to._meta.model_name),
                                     current_app=self.admin_site.name)
 
             params = self.url_parameters()
             if params:
-                url = u'?' + u'&amp;'.join([u'%s=%s' % (k, v) for k, v in params.items()])
+                url = '?' + '&amp;'.join(['%s=%s' % (k, v) for k, v in params.items()])
             else:
-                url = u''
+                url = ''
             if "class" not in attrs:
                 attrs['class'] = 'vForeignKeyRawIdAdminField' # The JavaScript code looks for this hook.
             # TODO: "lookup_id_" is hard-coded here. This should instead use
             # the correct API to determine the ID dynamically.
-            extra.append(u'<a href="%s%s" class="related-lookup" id="lookup_id_%s" onclick="return showRelatedObjectLookupPopup(this);"> '
+            extra.append('<a href="%s%s" class="related-lookup" id="lookup_id_%s" onclick="return showRelatedObjectLookupPopup(this);"> '
                             % (related_url, url, name))
-            extra.append(u'<img src="%s" width="16" height="16" alt="%s" /></a>'
+            extra.append('<img src="%s" width="16" height="16" alt="%s" /></a>'
                             % (static('admin/img/selector-search.gif'), _('Lookup')))
         output = [super(ForeignKeyRawIdWidget, self).render(name, value, attrs)] + extra
         if value:
             output.append(self.label_for_value(value))
-        return mark_safe(u''.join(output))
+        return mark_safe(''.join(output))
 
     def base_url_parameters(self):
         return url_params_from_lookup_dict(self.rel.limit_choices_to)
@@ -187,7 +199,7 @@ class ManyToManyRawIdWidget(ForeignKeyRawIdWidget):
             # The related object is registered with the same AdminSite
             attrs['class'] = 'vManyToManyRawIdAdminField'
         if value:
-            value = ','.join([force_unicode(v) for v in value])
+            value = ','.join([force_text(v) for v in value])
         else:
             value = ''
         return super(ManyToManyRawIdWidget, self).render(name, value, attrs)
@@ -203,17 +215,6 @@ class ManyToManyRawIdWidget(ForeignKeyRawIdWidget):
         if value:
             return value.split(',')
 
-    def _has_changed(self, initial, data):
-        if initial is None:
-            initial = []
-        if data is None:
-            data = []
-        if len(initial) != len(data):
-            return True
-        for pk1, pk2 in zip(initial, data):
-            if force_unicode(pk1) != force_unicode(pk2):
-                return True
-        return False
 
 class RelatedFieldWidgetWrapper(forms.Widget):
     """
@@ -248,18 +249,18 @@ class RelatedFieldWidgetWrapper(forms.Widget):
 
     def render(self, name, value, *args, **kwargs):
         rel_to = self.rel.to
-        info = (rel_to._meta.app_label, rel_to._meta.object_name.lower())
+        info = (rel_to._meta.app_label, rel_to._meta.model_name)
         self.widget.choices = self.choices
         output = [self.widget.render(name, value, *args, **kwargs)]
         if self.can_add_related:
             related_url = reverse('admin:%s_%s_add' % info, current_app=self.admin_site.name)
             # TODO: "add_id_" is hard-coded here. This should instead use the
             # correct API to determine the ID dynamically.
-            output.append(u'<a href="%s" class="add-another" id="add_id_%s" onclick="return showAddAnotherPopup(this);"> '
+            output.append('<a href="%s" class="add-another" id="add_id_%s" onclick="return showAddAnotherPopup(this);"> '
                           % (related_url, name))
-            output.append(u'<img src="%s" width="10" height="10" alt="%s"/></a>'
+            output.append('<img src="%s" width="10" height="10" alt="%s"/></a>'
                           % (static('admin/img/icon_addlink.gif'), _('Add Another')))
-        return mark_safe(u''.join(output))
+        return mark_safe(''.join(output))
 
     def build_attrs(self, extra_attrs=None, **kwargs):
         "Helper function for building an attribute dictionary."
@@ -268,9 +269,6 @@ class RelatedFieldWidgetWrapper(forms.Widget):
 
     def value_from_datadict(self, data, files, name):
         return self.widget.value_from_datadict(data, files, name)
-
-    def _has_changed(self, initial, data):
-        return self.widget._has_changed(initial, data)
 
     def id_for_label(self, id_):
         return self.widget.id_for_label(id_)
@@ -289,19 +287,44 @@ class AdminTextInputWidget(forms.TextInput):
             final_attrs.update(attrs)
         super(AdminTextInputWidget, self).__init__(attrs=final_attrs)
 
-class AdminURLFieldWidget(forms.TextInput):
+class AdminEmailInputWidget(forms.EmailInput):
+    def __init__(self, attrs=None):
+        final_attrs = {'class': 'vTextField'}
+        if attrs is not None:
+            final_attrs.update(attrs)
+        super(AdminEmailInputWidget, self).__init__(attrs=final_attrs)
+
+class AdminURLFieldWidget(forms.URLInput):
     def __init__(self, attrs=None):
         final_attrs = {'class': 'vURLField'}
         if attrs is not None:
             final_attrs.update(attrs)
         super(AdminURLFieldWidget, self).__init__(attrs=final_attrs)
 
+    def render(self, name, value, attrs=None):
+        html = super(AdminURLFieldWidget, self).render(name, value, attrs)
+        if value:
+            value = force_text(self._format_value(value))
+            final_attrs = {'href': smart_urlquote(value)}
+            html = format_html(
+                '<p class="url">{0} <a{1}>{2}</a><br />{3} {4}</p>',
+                _('Currently:'), flatatt(final_attrs), value,
+                _('Change:'), html
+            )
+        return html
+
+
 class AdminIntegerFieldWidget(forms.TextInput):
+    class_name = 'vIntegerField'
+
     def __init__(self, attrs=None):
-        final_attrs = {'class': 'vIntegerField'}
+        final_attrs = {'class': self.class_name}
         if attrs is not None:
             final_attrs.update(attrs)
         super(AdminIntegerFieldWidget, self).__init__(attrs=final_attrs)
+
+class AdminBigIntegerFieldWidget(AdminIntegerFieldWidget):
+    class_name = 'vBigIntegerField'
 
 class AdminCommaSeparatedIntegerFieldWidget(forms.TextInput):
     def __init__(self, attrs=None):

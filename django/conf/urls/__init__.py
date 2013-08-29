@@ -1,11 +1,14 @@
+from importlib import import_module
+
 from django.core.urlresolvers import (RegexURLPattern,
     RegexURLResolver, LocaleRegexURLResolver)
 from django.core.exceptions import ImproperlyConfigured
-from django.utils.importlib import import_module
+from django.utils import six
 
 
-__all__ = ['handler403', 'handler404', 'handler500', 'include', 'patterns', 'url']
+__all__ = ['handler400', 'handler403', 'handler404', 'handler500', 'include', 'patterns', 'url']
 
+handler400 = 'django.views.defaults.bad_request'
 handler403 = 'django.views.defaults.permission_denied'
 handler404 = 'django.views.defaults.page_not_found'
 handler500 = 'django.views.defaults.server_error'
@@ -20,7 +23,7 @@ def include(arg, namespace=None, app_name=None):
         # No namespace hint - use manually provided namespace
         urlconf_module = arg
 
-    if isinstance(urlconf_module, basestring):
+    if isinstance(urlconf_module, six.string_types):
         urlconf_module = import_module(urlconf_module)
     patterns = getattr(urlconf_module, 'urlpatterns', urlconf_module)
 
@@ -52,7 +55,7 @@ def url(regex, view, kwargs=None, name=None, prefix=''):
         urlconf_module, app_name, namespace = view
         return RegexURLResolver(regex, urlconf_module, kwargs, app_name=app_name, namespace=namespace)
     else:
-        if isinstance(view, basestring):
+        if isinstance(view, six.string_types):
             if not view:
                 raise ImproperlyConfigured('Empty URL pattern view name not permitted (for pattern %r)' % regex)
             if prefix:

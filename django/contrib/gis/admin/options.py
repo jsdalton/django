@@ -33,9 +33,10 @@ class GeoModelAdmin(ModelAdmin):
     map_template = 'gis/admin/openlayers.html'
     openlayers_url = 'http://openlayers.org/api/2.11/OpenLayers.js'
     point_zoom = num_zoom - 6
-    wms_url = 'http://labs.metacarta.com/wms/vmap0'
+    wms_url = 'http://vmap0.tiles.osgeo.org/wms/vmap0'
     wms_layer = 'basic'
     wms_name = 'OpenLayers WMS'
+    wms_options = {'format': 'image/jpeg'}
     debug = False
     widget = OpenLayersWidget
 
@@ -50,10 +51,11 @@ class GeoModelAdmin(ModelAdmin):
     def formfield_for_dbfield(self, db_field, **kwargs):
         """
         Overloaded from ModelAdmin so that an OpenLayersWidget is used
-        for viewing/editing GeometryFields.
+        for viewing/editing 2D GeometryFields (OpenLayers 2 does not support
+        3D editing).
         """
-        if isinstance(db_field, models.GeometryField):
-            request = kwargs.pop('request', None)
+        if isinstance(db_field, models.GeometryField) and db_field.dim < 3:
+            kwargs.pop('request', None)
             # Setting the widget with the newly defined widget.
             kwargs['widget'] = self.get_map_widget(db_field)
             return db_field.formfield(**kwargs)
@@ -76,6 +78,12 @@ class GeoModelAdmin(ModelAdmin):
         class OLMap(self.widget):
             template = self.map_template
             geom_type = db_field.geom_type
+
+            wms_options = ''
+            if self.wms_options:
+                wms_options = ["%s: '%s'" % pair for pair in self.wms_options.items()]
+                wms_options = ', %s' % ', '.join(wms_options)
+
             params = {'default_lon' : self.default_lon,
                       'default_lat' : self.default_lat,
                       'default_zoom' : self.default_zoom,
@@ -86,6 +94,7 @@ class GeoModelAdmin(ModelAdmin):
                       'scrollable' : self.scrollable,
                       'layerswitcher' : self.layerswitcher,
                       'collection_type' : collection_type,
+                      'is_generic' : db_field.geom_type == 'GEOMETRY',
                       'is_linestring' : db_field.geom_type in ('LINESTRING', 'MULTILINESTRING'),
                       'is_polygon' : db_field.geom_type in ('POLYGON', 'MULTIPOLYGON'),
                       'is_point' : db_field.geom_type in ('POINT', 'MULTIPOINT'),
@@ -106,6 +115,7 @@ class GeoModelAdmin(ModelAdmin):
                       'wms_url' : self.wms_url,
                       'wms_layer' : self.wms_layer,
                       'wms_name' : self.wms_name,
+                      'wms_options' : wms_options,
                       'debug' : self.debug,
                       }
         return OLMap

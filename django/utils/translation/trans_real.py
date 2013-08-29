@@ -1,19 +1,23 @@
 """Translation helper functions."""
+from __future__ import unicode_literals
 
+from collections import OrderedDict
 import locale
 import os
 import re
 import sys
 import gettext as gettext_module
+from importlib import import_module
 from threading import local
+import warnings
 
-try:
-    from cStringIO import StringIO
-except ImportError:
-    from StringIO import StringIO
-
-from django.utils.importlib import import_module
+from django.utils.encoding import force_str, force_text
+from django.utils.functional import memoize
+from django.utils._os import upath
 from django.utils.safestring import mark_safe, SafeData
+from django.utils import six
+from django.utils.six import StringIO
+from django.utils.translation import TranslatorCommentWarning
 
 
 # Translations are cached in a dictionary for every language+app tuple.
@@ -27,18 +31,21 @@ _default = None
 # This is a cache for normalized accept-header languages to prevent multiple
 # file lookups when checking the same locale on repeated requests.
 _accepted = {}
+_checked_languages = {}
 
 # magic gettext number to separate context from message
-CONTEXT_SEPARATOR = u"\x04"
+CONTEXT_SEPARATOR = "\x04"
 
-# Format of Accept-Language header values. From RFC 2616, section 14.4 and 3.9.
+# Format of Accept-Language header values. From RFC 2616, section 14.4 and 3.9
+# and RFC 3066, section 2.1
 accept_language_re = re.compile(r'''
-        ([A-Za-z]{1,8}(?:-[A-Za-z]{1,8})*|\*)         # "en", "en-au", "x-y-z", "*"
+        ([A-Za-z]{1,8}(?:-[A-Za-z0-9]{1,8})*|\*)      # "en", "en-au", "x-y-z", "es-419", "*"
         (?:\s*;\s*q=(0(?:\.\d{,3})?|1(?:.0{,3})?))?   # Optional "q=1.00", "q=0.8"
         (?:\s*,\s*|$)                                 # Multiple accepts per header.
         ''', re.VERBOSE)
 
-language_code_prefix_re = re.compile(r'^/([\w-]+)/')
+language_code_prefix_re = re.compile(r'^/([\w-]+)(/|$)')
+
 
 def to_locale(language, to_lower=False):
     """
@@ -73,7 +80,6 @@ class DjangoTranslation(gettext_module.GNUTranslations):
     def __init__(self, *args, **kw):
         gettext_module.GNUTranslations.__init__(self, *args, **kw)
         self.set_output_charset('utf-8')
-        self.django_output_charset = 'utf-8'
         self.__language = '??'
 
     def merge(self, other):
@@ -109,14 +115,7 @@ def translation(language):
 
     from django.conf import settings
 
-    globalpath = os.path.join(os.path.dirname(sys.modules[settings.__module__].__file__), 'locale')
-
-    if settings.SETTINGS_MODULE is not None:
-        parts = settings.SETTINGS_MODULE.split('.')
-        project = import_module(parts[0])
-        projectpath = os.path.join(os.path.dirname(project.__file__), 'locale')
-    else:
-        projectpath = None
+    globalpath = os.path.join(os.path.dirname(upath(sys.modules[settings.__module__].__file__)), 'locale')
 
     def _fetch(lang, fallback=None):
 
@@ -143,7 +142,7 @@ def translation(language):
         # doesn't affect en-gb), even though they will both use the core "en"
         # translation. So we have to subvert Python's internal gettext caching.
         base_lang = lambda x: x.split('-', 1)[0]
-        if base_lang(lang) in [base_lang(trans) for trans in _translations]:
+        if base_lang(lang) in [base_lang(trans) for trans in list(_translations)]:
             res._info = res._info.copy()
             res._catalog = res._catalog.copy()
 
@@ -158,15 +157,10 @@ def translation(language):
 
         for appname in reversed(settings.INSTALLED_APPS):
             app = import_module(appname)
-            apppath = os.path.join(os.path.dirname(app.__file__), 'locale')
+            apppath = os.path.join(os.path.dirname(upath(app.__file__)), 'locale')
 
             if os.path.isdir(apppath):
                 res = _merge(apppath)
-
-        localepaths = [os.path.normpath(path) for path in settings.LOCALE_PATHS]
-        if (projectpath and os.path.isdir(projectpath) and
-                os.path.normpath(projectpath) not in localepaths):
-            res = _merge(projectpath)
 
         for localepath in reversed(settings.LOCALE_PATHS):
             if os.path.isdir(localepath):
@@ -258,7 +252,8 @@ def do_translate(message, translation_function):
     """
     global _default
 
-    eol_message = message.replace('\r\n', '\n').replace('\r', '\n')
+    # str() is allowing a bytestring message to remain bytestring on Python 2
+    eol_message = message.replace(str('\r\n'), str('\n')).replace(str('\r'), str('\n'))
     t = getattr(_active, "value", None)
     if t is not None:
         result = getattr(t, translation_function)(eol_message)
@@ -272,14 +267,22 @@ def do_translate(message, translation_function):
     return result
 
 def gettext(message):
+    """
+    Returns a string of the translation of the message.
+
+    Returns a string on Python 3 and an UTF-8-encoded bytestring on Python 2.
+    """
     return do_translate(message, 'gettext')
 
-def ugettext(message):
-    return do_translate(message, 'ugettext')
+if six.PY3:
+    ugettext = gettext
+else:
+    def ugettext(message):
+        return do_translate(message, 'ugettext')
 
 def pgettext(context, message):
-    result = do_translate(
-        u"%s%s%s" % (context, CONTEXT_SEPARATOR, message), 'ugettext')
+    msg_with_ctxt = "%s%s%s" % (context, CONTEXT_SEPARATOR, message)
+    result = ugettext(msg_with_ctxt)
     if CONTEXT_SEPARATOR in result:
         # Translation not found
         result = message
@@ -307,25 +310,31 @@ def do_ntranslate(singular, plural, number, translation_function):
 
 def ngettext(singular, plural, number):
     """
-    Returns a UTF-8 bytestring of the translation of either the singular or
-    plural, based on the number.
+    Returns a string of the translation of either the singular or plural,
+    based on the number.
+
+    Returns a string on Python 3 and an UTF-8-encoded bytestring on Python 2.
     """
     return do_ntranslate(singular, plural, number, 'ngettext')
 
-def ungettext(singular, plural, number):
-    """
-    Returns a unicode strings of the translation of either the singular or
-    plural, based on the number.
-    """
-    return do_ntranslate(singular, plural, number, 'ungettext')
+if six.PY3:
+    ungettext = ngettext
+else:
+    def ungettext(singular, plural, number):
+        """
+        Returns a unicode strings of the translation of either the singular or
+        plural, based on the number.
+        """
+        return do_ntranslate(singular, plural, number, 'ungettext')
 
 def npgettext(context, singular, plural, number):
-    result = do_ntranslate(u"%s%s%s" % (context, CONTEXT_SEPARATOR, singular),
-                           u"%s%s%s" % (context, CONTEXT_SEPARATOR, plural),
-                           number, 'ungettext')
+    msgs_with_ctxt = ("%s%s%s" % (context, CONTEXT_SEPARATOR, singular),
+                      "%s%s%s" % (context, CONTEXT_SEPARATOR, plural),
+                      number)
+    result = ungettext(*msgs_with_ctxt)
     if CONTEXT_SEPARATOR in result:
         # Translation not found
-        result = do_ntranslate(singular, plural, number, 'ungettext')
+        result = ungettext(singular, plural, number)
     return result
 
 def all_locale_paths():
@@ -334,7 +343,7 @@ def all_locale_paths():
     """
     from django.conf import settings
     globalpath = os.path.join(
-        os.path.dirname(sys.modules[settings.__module__].__file__), 'locale')
+        os.path.dirname(upath(sys.modules[settings.__module__].__file__)), 'locale')
     return [globalpath] + list(settings.LOCALE_PATHS)
 
 def check_for_language(lang_code):
@@ -348,35 +357,73 @@ def check_for_language(lang_code):
         if gettext_module.find('django', path, [to_locale(lang_code)]) is not None:
             return True
     return False
+check_for_language = memoize(check_for_language, _checked_languages, 1)
 
-def get_language_from_path(path, supported=None):
+def get_supported_language_variant(lang_code, supported=None, strict=False):
     """
-    Returns the language-code if there is a valid language-code
-    found in the `path`.
+    Returns the language-code that's listed in supported languages, possibly
+    selecting a more generic variant. Raises LookupError if nothing found.
+
+    If `strict` is False (the default), the function will look for an alternative
+    country-specific variant when the currently checked is not found.
     """
     if supported is None:
         from django.conf import settings
-        supported = dict(settings.LANGUAGES)
-    regex_match = language_code_prefix_re.match(path)
-    if regex_match:
-        lang_code = regex_match.group(1)
-        if lang_code in supported and check_for_language(lang_code):
-            return lang_code
+        supported = OrderedDict(settings.LANGUAGES)
+    if lang_code:
+        # if fr-CA is not supported, try fr-ca; if that fails, fallback to fr.
+        generic_lang_code = lang_code.split('-')[0]
+        variants = (lang_code, lang_code.lower(), generic_lang_code,
+                    generic_lang_code.lower())
+        for code in variants:
+            if code in supported and check_for_language(code):
+                return code
+        if not strict:
+            # if fr-fr is not supported, try fr-ca.
+            for supported_code in supported:
+                if supported_code.startswith((generic_lang_code + '-',
+                                              generic_lang_code.lower() + '-')):
+                    return supported_code
+    raise LookupError(lang_code)
 
-def get_language_from_request(request):
+def get_language_from_path(path, supported=None, strict=False):
+    """
+    Returns the language-code if there is a valid language-code
+    found in the `path`.
+
+    If `strict` is False (the default), the function will look for an alternative
+    country-specific variant when the currently checked is not found.
+    """
+    if supported is None:
+        from django.conf import settings
+        supported = OrderedDict(settings.LANGUAGES)
+    regex_match = language_code_prefix_re.match(path)
+    if not regex_match:
+        return None
+    lang_code = regex_match.group(1)
+    try:
+        return get_supported_language_variant(lang_code, supported, strict=strict)
+    except LookupError:
+        return None
+
+def get_language_from_request(request, check_path=False):
     """
     Analyzes the request to find what language the user wants the system to
     show. Only languages listed in settings.LANGUAGES are taken into account.
     If the user requests a sublanguage where we have a main language, we send
     out the main language.
+
+    If check_path is True, the URL path prefix will be checked for a language
+    code, otherwise this is skipped for backwards compatibility.
     """
     global _accepted
     from django.conf import settings
-    supported = dict(settings.LANGUAGES)
+    supported = OrderedDict(settings.LANGUAGES)
 
-    lang_code = get_language_from_path(request.path_info, supported)
-    if lang_code is not None:
-        return lang_code
+    if check_path:
+        lang_code = get_language_from_path(request.path_info, supported)
+        if lang_code is not None:
+            return lang_code
 
     if hasattr(request, 'session'):
         lang_code = request.session.get('django_language', None)
@@ -385,21 +432,15 @@ def get_language_from_request(request):
 
     lang_code = request.COOKIES.get(settings.LANGUAGE_COOKIE_NAME)
 
-    if lang_code and lang_code not in supported:
-        lang_code = lang_code.split('-')[0] # e.g. if fr-ca is not supported fallback to fr
-
-    if lang_code and lang_code in supported and check_for_language(lang_code):
-        return lang_code
+    try:
+        return get_supported_language_variant(lang_code, supported)
+    except LookupError:
+        pass
 
     accept = request.META.get('HTTP_ACCEPT_LANGUAGE', '')
     for accept_lang, unused in parse_accept_lang_header(accept):
         if accept_lang == '*':
             break
-
-        # We have a very restricted form for our language files (no encoding
-        # specifier, since they all must be UTF-8 and only one possible
-        # language each time. So we avoid the overhead of gettext.find() and
-        # work out the MO file manually.
 
         # 'normalized' is the root name of the locale in POSIX format (which is
         # the format used for the directories holding the MO files).
@@ -414,16 +455,18 @@ def get_language_from_request(request):
             # need to check again.
             return _accepted[normalized]
 
-        for lang, dirname in ((accept_lang, normalized),
-                (accept_lang.split('-')[0], normalized.split('_')[0])):
-            if lang.lower() not in supported:
-                continue
-            for path in all_locale_paths():
-                if os.path.exists(os.path.join(path, dirname, 'LC_MESSAGES', 'django.mo')):
-                    _accepted[normalized] = lang
-                    return lang
+        try:
+            accept_lang = get_supported_language_variant(accept_lang, supported)
+        except LookupError:
+            continue
+        else:
+            _accepted[normalized] = accept_lang
+            return accept_lang
 
-    return settings.LANGUAGE_CODE
+    try:
+        return get_supported_language_variant(settings.LANGUAGE_CODE, supported)
+    except LookupError:
+        return settings.LANGUAGE_CODE
 
 dot_re = re.compile(r'\S')
 def blankout(src, char):
@@ -434,11 +477,12 @@ def blankout(src, char):
     return dot_re.sub(char, src)
 
 context_re = re.compile(r"""^\s+.*context\s+((?:"[^"]*?")|(?:'[^']*?'))\s*""")
-inline_re = re.compile(r"""^\s*trans\s+((?:"[^"]*?")|(?:'[^']*?'))(\s+.*context\s+(?:"[^"]*?")|(?:'[^']*?'))?\s*""")
-block_re = re.compile(r"""^\s*blocktrans(\s+.*context\s+(?:"[^"]*?")|(?:'[^']*?'))?(?:\s+|$)""")
+inline_re = re.compile(r"""^\s*trans\s+((?:"[^"]*?")|(?:'[^']*?'))(\s+.*context\s+((?:"[^"]*?")|(?:'[^']*?')))?\s*""")
+block_re = re.compile(r"""^\s*blocktrans(\s+.*context\s+((?:"[^"]*?")|(?:'[^']*?')))?(?:\s+|$)""")
 endblock_re = re.compile(r"""^\s*endblocktrans$""")
 plural_re = re.compile(r"""^\s*plural$""")
 constant_re = re.compile(r"""_\(((?:".*?")|(?:'.*?'))\)""")
+one_percent_re = re.compile(r"""(?<!%)%(?!%)""")
 
 
 def templatize(src, origin=None):
@@ -447,8 +491,10 @@ def templatize(src, origin=None):
     does so by translating the Django translation tags into standard gettext
     function invocations.
     """
+    from django.conf import settings
     from django.template import (Lexer, TOKEN_TEXT, TOKEN_VAR, TOKEN_BLOCK,
             TOKEN_COMMENT, TRANSLATOR_COMMENT_MARK)
+    src = force_text(src, settings.FILE_CHARSET)
     out = StringIO()
     message_context = None
     intrans = False
@@ -457,6 +503,9 @@ def templatize(src, origin=None):
     plural = []
     incomment = False
     comment = []
+    lineno_comment_map = {}
+    comment_lineno_cache = None
+
     for t in Lexer(src, origin).tokenize():
         if incomment:
             if t.token_type == TOKEN_BLOCK and t.contents == 'endcomment':
@@ -513,12 +562,32 @@ def templatize(src, origin=None):
                 else:
                     singular.append('%%(%s)s' % t.contents)
             elif t.token_type == TOKEN_TEXT:
-                contents = t.contents.replace('%', '%%')
+                contents = one_percent_re.sub('%%', t.contents)
                 if inplural:
                     plural.append(contents)
                 else:
                     singular.append(contents)
+
         else:
+            # Handle comment tokens (`{# ... #}`) plus other constructs on
+            # the same line:
+            if comment_lineno_cache is not None:
+                cur_lineno = t.lineno + t.contents.count('\n')
+                if comment_lineno_cache == cur_lineno:
+                    if t.token_type != TOKEN_COMMENT:
+                        for c in lineno_comment_map[comment_lineno_cache]:
+                            filemsg = ''
+                            if origin:
+                                filemsg = 'file %s, ' % origin
+                            warn_msg = ("The translator-targeted comment '%s' "
+                                "(%sline %d) was ignored, because it wasn't the last item "
+                                "on the line.") % (c, filemsg, comment_lineno_cache)
+                            warnings.warn(warn_msg, TranslatorCommentWarning)
+                        lineno_comment_map[comment_lineno_cache] = []
+                else:
+                    out.write('# %s' % ' | '.join(lineno_comment_map[comment_lineno_cache]))
+                comment_lineno_cache = None
+
             if t.token_type == TOKEN_BLOCK:
                 imatch = inline_re.match(t.contents)
                 bmatch = block_re.match(t.contents)
@@ -529,6 +598,7 @@ def templatize(src, origin=None):
                         g = g.strip('"')
                     elif g[0] == "'":
                         g = g.strip("'")
+                    g = one_percent_re.sub('%%', g)
                     if imatch.group(2):
                         # A context is provided
                         context_match = context_re.match(imatch.group(2))
@@ -574,10 +644,13 @@ def templatize(src, origin=None):
                     else:
                         out.write(blankout(p, 'F'))
             elif t.token_type == TOKEN_COMMENT:
-                out.write(' # %s' % t.contents)
+                if t.contents.lstrip().startswith(TRANSLATOR_COMMENT_MARK):
+                    lineno_comment_map.setdefault(t.lineno,
+                                                  []).append(t.contents)
+                    comment_lineno_cache = t.lineno
             else:
                 out.write(blankout(t.contents, 'X'))
-    return out.getvalue()
+    return force_str(out.getvalue())
 
 def parse_accept_lang_header(lang_string):
     """
@@ -594,7 +667,10 @@ def parse_accept_lang_header(lang_string):
         first, lang, priority = pieces[i : i + 3]
         if first:
             return []
-        priority = priority and float(priority) or 1.0
+        if priority:
+            priority = float(priority)
+        if not priority:        # if priority is 0.0 at this point make it 1.0
+             priority = 1.0
         result.append((lang, priority))
     result.sort(key=lambda k: k[1], reverse=True)
     return result

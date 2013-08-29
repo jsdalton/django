@@ -9,7 +9,7 @@ from django.contrib.gis.geometry.backend import Geometry
 from django.contrib.gis.measure import Area, Distance
 
 
-ALL_TERMS = dict([(x, None) for x in (
+ALL_TERMS = set([
             'bbcontains', 'bboverlaps', 'contained', 'contains',
             'contains_properly', 'coveredby', 'covers', 'crosses', 'disjoint',
             'distance_gt', 'distance_gte', 'distance_lt', 'distance_lte',
@@ -18,7 +18,7 @@ ALL_TERMS = dict([(x, None) for x in (
             'left', 'right', 'overlaps_left', 'overlaps_right',
             'overlaps_above', 'overlaps_below',
             'strictly_above', 'strictly_below'
-            )])
+            ])
 ALL_TERMS.update(sql.constants.QUERY_TERMS)
 
 class GeoQuery(sql.Query):
@@ -72,9 +72,11 @@ class GeoQuery(sql.Query):
             value = Area(**{field.area_att : value})
         elif isinstance(field, (GeomField, GeometryField)) and value:
             value = Geometry(value)
+        elif field is not None:
+            return super(GeoQuery, self).convert_values(value, field, connection)
         return value
 
-    def get_aggregation(self, using):
+    def get_aggregation(self, using, force_subq=False):
         # Remove any aggregates marked for reduction from the subquery
         # and move them to the outer AggregateQuery.
         connection = connections[using]
@@ -82,7 +84,7 @@ class GeoQuery(sql.Query):
             if isinstance(aggregate, gis_aggregates.GeoAggregate):
                 if not getattr(aggregate, 'is_extent', False) or connection.ops.oracle:
                     self.extra_select_fields[alias] = GeomField()
-        return super(GeoQuery, self).get_aggregation(using)
+        return super(GeoQuery, self).get_aggregation(using, force_subq)
 
     def resolve_aggregate(self, value, aggregate, connection):
         """

@@ -9,11 +9,8 @@ that'll work while you walk through the introduction.
 Install Python
 --------------
 
-Being a Python Web framework, Django requires Python. It works with any Python
-version from 2.5 to 2.7 (due to backwards incompatibilities in Python 3.0,
-Django does not currently work with Python 3.0; see :doc:`the Django FAQ
-</faq/install>` for more information on supported Python versions and the 3.0
-transition), these versions of Python include a lightweight database called
+Being a Python Web framework, Django requires Python. It works with Python 2.7,
+3.2 or 3.3. All these versions of Python include a lightweight database called
 SQLite_ so you won't need to set up a database just yet.
 
 .. _sqlite: http://sqlite.org/
@@ -31,19 +28,17 @@ probably already have it installed.
 You can verify that Python is installed by typing ``python`` from your shell;
 you should see something like::
 
-    Python 2.5.1 (r251:54863, Jan 17 2008, 19:35:17)
-    [GCC 4.0.1 (Apple Inc. build 5465)] on darwin
+    Python 2.7.3 (default, Jan  2 2013, 13:56:14)
+    [GCC 4.7.2] on linux2
     Type "help", "copyright", "credits" or "license" for more information.
     >>>
 
 Set up a database
 -----------------
 
-If you installed Python 2.5 or later, you can skip this step for now.
-
-If not, or if you'd like to work with a "large" database engine like PostgreSQL,
-MySQL, or Oracle, consult the :ref:`database installation information
-<database-installation>`.
+This step is only necessary if you'd like to work with a "large" database engine
+like PostgreSQL, MySQL, or Oracle. To install such a database, consult the
+:ref:`database installation information <database-installation>`.
 
 Remove any old versions of Django
 ---------------------------------
@@ -82,17 +77,17 @@ Verifying
 ---------
 
 To verify that Django can be seen by Python, type ``python`` from your shell.
-Then at the Python prompt, try to import Django::
+Then at the Python prompt, try to import Django:
+
+.. parsed-literal::
 
     >>> import django
-    >>> print django.get_version()
-    1.3
+    >>> print(django.get_version())
+    |version|
 
+You may have another version of Django installed.
 
 That's it!
 ----------
 
 That's it -- you can now :doc:`move onto the tutorial </intro/tutorial01>`.
-
-
-

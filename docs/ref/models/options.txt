@@ -24,11 +24,16 @@ Available ``Meta`` options
 
 .. attribute:: Options.app_label
 
-    If a model exists outside of the standard :file:`models.py` (for instance,
-    if the app's models are in submodules of ``myapp.models``), the model must
-    define which app it is part of::
+    If a model exists outside of the standard locations (:file:`models.py` or
+    a ``models`` package in an app), the model must define which app it is part
+    of::
 
         app_label = 'myapp'
+
+    .. versionadded:: 1.7
+
+        ``app_label`` is no longer required for models that are defined
+        in a ``models`` package within an app.
 
 ``db_table``
 ------------
@@ -83,15 +88,17 @@ Django quotes column and table names behind the scenes.
 
 .. attribute:: Options.get_latest_by
 
-    The name of a :class:`DateField` or :class:`DateTimeField` in the model.
-    This specifies the default field to use in your model :class:`Manager`'s
-    :class:`~QuerySet.latest` method.
+    The name of an orderable field in the model, typically a :class:`DateField`,
+    :class:`DateTimeField`, or :class:`IntegerField`. This specifies the default
+    field to use in your model :class:`Manager`’s
+    :meth:`~django.db.models.query.QuerySet.latest` and
+    :meth:`~django.db.models.query.QuerySet.earliest` methods.
 
     Example::
 
         get_latest_by = "order_date"
 
-    See the docs for :meth:`~django.db.models.query.QuerySet.latest` for more.
+    See the :meth:`~django.db.models.query.QuerySet.latest` docs for more.
 
 ``managed``
 -----------
@@ -99,9 +106,9 @@ Django quotes column and table names behind the scenes.
 .. attribute:: Options.managed
 
     Defaults to ``True``, meaning Django will create the appropriate database
-    tables in :djadmin:`syncdb` and remove them as part of a :djadmin:`reset`
-    management command. That is, Django *manages* the database tables'
-    lifecycles.
+    tables in :djadmin:`migrate` or as part of migrations and remove them as
+    part of a :djadmin:`flush` management command. That is, Django
+    *manages* the database tables' lifecycles.
 
     If ``False``, no database table creation or deletion operations will be
     performed for this model. This is useful if the model represents an existing
@@ -143,6 +150,12 @@ Django quotes column and table names behind the scenes.
     and a question has more than one answer, and the order of answers matters, you'd
     do this::
 
+        from django.db import models
+
+        class Question(models.Model):
+            text = models.TextField()
+            # ...
+
         class Answer(models.Model):
             question = models.ForeignKey(Question)
             # ...
@@ -176,6 +189,13 @@ Django quotes column and table names behind the scenes.
         >>> answer.get_previous_in_order()
         <Answer: 1>
 
+.. admonition:: Changing order_with_respect_to
+
+        ``order_with_respect_to`` adds an additional field/database column
+        named ``_order``, so be sure to make and apply the appropriate 
+        migrations if you add or change ``order_with_respect_to``
+        after your initial :djadmin:`migrate`.
+
 ``ordering``
 ------------
 
@@ -188,11 +208,6 @@ Django quotes column and table names behind the scenes.
     This is a tuple or list of strings. Each string is a field name with an optional
     "-" prefix, which indicates descending order. Fields without a leading "-" will
     be ordered ascending. Use the string "?" to order randomly.
-
-    .. note::
-
-        Regardless of how many fields are in :attr:`~Options.ordering`, the admin
-        site uses only the first field.
 
     For example, to order by a ``pub_date`` field ascending, use this::
 
@@ -212,14 +227,26 @@ Django quotes column and table names behind the scenes.
 .. attribute:: Options.permissions
 
     Extra permissions to enter into the permissions table when creating this object.
-    Add, delete and change permissions are automatically created for each object
-    that has ``admin`` set. This example specifies an extra permission,
-    ``can_deliver_pizzas``::
+    Add, delete and change permissions are automatically created for each
+    model. This example specifies an extra permission, ``can_deliver_pizzas``::
 
         permissions = (("can_deliver_pizzas", "Can deliver pizzas"),)
 
     This is a list or tuple of 2-tuples in the format ``(permission_code,
     human_readable_permission_name)``.
+
+``default_permissions``
+------------------------------
+
+.. attribute:: Options.default_permissions
+
+    .. versionadded:: 1.7
+
+    Defaults to ``('add', 'change', 'delete')``. You may customize this list,
+    for example, by setting this to an empty list if your app doesn't require
+    any of the default permissions. It must be specified on the model before
+    the model is created by :djadmin:`syncdb` in order to prevent any omitted
+    permissions from being created.
 
 ``proxy``
 ---------
@@ -238,15 +265,35 @@ Django quotes column and table names behind the scenes.
 
         unique_together = (("driver", "restaurant"),)
 
-    This is a list of lists of fields that must be unique when considered together.
+    This is a tuple of tuples that must be unique when considered together.
     It's used in the Django admin and is enforced at the database level (i.e., the
     appropriate ``UNIQUE`` statements are included in the ``CREATE TABLE``
     statement).
 
-    For convenience, unique_together can be a single list when dealing with a single
+    For convenience, unique_together can be a single tuple when dealing with a single
     set of fields::
 
         unique_together = ("driver", "restaurant")
+
+    A :class:`~django.db.models.ManyToManyField` cannot be included in
+    unique_together. (It's not clear what that would even mean!) If you
+    need to validate uniqueness related to a
+    :class:`~django.db.models.ManyToManyField`, try using a signal or
+    an explicit :attr:`through <ManyToManyField.through>` model.
+
+``index_together``
+------------------
+
+.. attribute:: Options.index_together
+
+    Sets of field names that, taken together, are indexed::
+
+        index_together = [
+            ["pub_date", "deadline"],
+        ]
+
+    This list of fields will be indexed together (i.e. the appropriate
+    ``CREATE INDEX`` statement will be issued.)
 
 ``verbose_name``
 ----------------

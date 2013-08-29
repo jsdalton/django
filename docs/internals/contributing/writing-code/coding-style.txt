@@ -1,5 +1,5 @@
 ============
-Coding Style
+Coding style
 ============
 
 Please follow these coding standards when writing code for inclusion in Django.
@@ -12,6 +12,12 @@ Python style
   You could use a tool like `pep8`_ to check for some problems in this
   area, but remember that :pep:`8` is only a guide, so respect the style of
   the surrounding code as a primary goal.
+
+  One big exception to :pep:`8` is our preference of longer line lengths.
+  We're well into the 21st Century, and we have high-resolution computer
+  screens that can fit way more than 79 characters on a screen. Don't limit
+  lines of code to 79 characters if it means the code looks significantly
+  uglier or is harder to read.
 
 * Use four spaces for indentation.
 
@@ -118,26 +124,32 @@ Model style
           first_name = models.CharField(max_length=20)
           last_name = models.CharField(max_length=40)
 
+* If you define a ``__str__`` method (previously ``__unicode__`` before Python 3
+  was supported), decorate the model class with
+  :func:`~django.utils.encoding.python_2_unicode_compatible`.
+
 * The order of model inner classes and standard methods should be as
   follows (noting that these are not all required):
 
   * All database fields
   * Custom manager attributes
   * ``class Meta``
-  * ``def __unicode__()``
   * ``def __str__()``
   * ``def save()``
   * ``def get_absolute_url()``
   * Any custom methods
 
-* If ``choices`` is defined for a given model field, define the choices as
-  a tuple of tuples, with an all-uppercase name, either near the top of
-  the model module or just above the model class. Example::
+* If ``choices`` is defined for a given model field, define each choice as
+  a tuple of tuples, with an all-uppercase name as a class attribute on the
+  model. Example::
 
-      GENDER_CHOICES = (
-          ('M', 'Male'),
-          ('F', 'Female'),
-      )
+    class MyModel(models.Model):
+        DIRECTION_UP = 'U'
+        DIRECTION_DOWN = 'D'
+        DIRECTION_CHOICES = (
+            (DIRECTION_UP, 'Up'),
+            (DIRECTION_DOWN, 'Down'),
+        )
 
 Use of ``django.conf.settings``
 -------------------------------
@@ -171,9 +183,9 @@ That means that the ability for third parties to import the module at the top
 level is incompatible with the ability to configure the settings object
 manually, or makes it very difficult in some circumstances.
 
-Instead of the above code, a level of laziness or indirection must be used, such
-as :class:`django.utils.functional.LazyObject`,
-:func:`django.utils.functional.lazy` or ``lambda``.
+Instead of the above code, a level of laziness or indirection must be used,
+such as ``django.utils.functional.LazyObject``,
+``django.utils.functional.lazy()`` or ``lambda``.
 
 Miscellaneous
 -------------
@@ -189,7 +201,7 @@ Miscellaneous
   occasionally cause unnecessary merge conflicts. Some IDE's can be
   configured to automatically remove them and most VCS tools can be set to
   highlight them in diff outputs. Note, however, that patches which only
-  remove whitespace (or only make changes for nominal PEP 8 conformance)
+  remove whitespace (or only make changes for nominal :pep:`8` conformance)
   are likely to be rejected, since they only introduce noise rather than
   code improvement. Tidy up when you're next changing code in the area.
 

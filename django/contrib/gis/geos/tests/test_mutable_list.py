@@ -3,8 +3,11 @@
 #
 # Modified from original contribution by Aryeh Leib Taurog, which was
 # released under the New BSD license.
+
+import unittest
+
 from django.contrib.gis.geos.mutable_list import ListMixin
-from django.utils import unittest
+from django.utils import six
 
 
 class UserListA(ListMixin):
@@ -54,14 +57,14 @@ class ListMixinTest(unittest.TestCase):
 
     def lists_of_len(self, length=None):
         if length is None: length = self.limit
-        pl = range(length)
+        pl = list(range(length))
         return pl, self.listType(pl)
 
     def limits_plus(self, b):
         return range(-self.limit - b, self.limit + b)
 
     def step_range(self):
-        return range(-1 - self.limit, 0) + range(1, 1 + self.limit)
+        return list(range(-1 - self.limit, 0)) + list(range(1, 1 + self.limit))
 
     def test01_getslice(self):
         'Slice retrieval'
@@ -159,13 +162,13 @@ class ListMixinTest(unittest.TestCase):
                     del pl[i:j]
                     del ul[i:j]
                     self.assertEqual(pl[:], ul[:], 'del slice [%d:%d]' % (i,j))
-                    for k in range(-Len - 1,0) + range(1,Len):
+                    for k in list(range(-Len - 1, 0)) + list(range(1, Len)):
                         pl, ul = self.lists_of_len(Len)
                         del pl[i:j:k]
                         del ul[i:j:k]
                         self.assertEqual(pl[:], ul[:], 'del slice [%d:%d:%d]' % (i,j,k))
 
-                for k in range(-Len - 1,0) + range(1,Len):
+                for k in list(range(-Len - 1, 0)) + list(range(1, Len)):
                     pl, ul = self.lists_of_len(Len)
                     del pl[:i:k]
                     del ul[:i:k]
@@ -176,7 +179,7 @@ class ListMixinTest(unittest.TestCase):
                     del ul[i::k]
                     self.assertEqual(pl[:], ul[:], 'del slice [%d::%d]' % (i,k))
 
-            for k in range(-Len - 1,0) + range(1,Len):
+            for k in list(range(-Len - 1, 0)) + list(range(1, Len)):
                 pl, ul = self.lists_of_len(Len)
                 del pl[::k]
                 del ul[::k]
@@ -267,7 +270,7 @@ class ListMixinTest(unittest.TestCase):
     def test07_allowed_types(self):
         'Type-restricted list'
         pl, ul = self.lists_of_len()
-        ul._allowed = (int, long)
+        ul._allowed = six.integer_types
         ul[1] = 50
         ul[:2] = [60, 70, 80]
         def setfcn(x, i, v): x[i] = v
@@ -319,7 +322,7 @@ class ListMixinTest(unittest.TestCase):
         pl.sort()
         ul.sort()
         self.assertEqual(pl[:], ul[:], 'sort')
-        mid = pl[len(pl) / 2]
+        mid = pl[len(pl) // 2]
         pl.sort(key=lambda x: (mid-x)**2)
         ul.sort(key=lambda x: (mid-x)**2)
         self.assertEqual(pl[:], ul[:], 'sort w/ key')
@@ -329,7 +332,7 @@ class ListMixinTest(unittest.TestCase):
         pl.sort(reverse=True)
         ul.sort(reverse=True)
         self.assertEqual(pl[:], ul[:], 'sort w/ reverse')
-        mid = pl[len(pl) / 2]
+        mid = pl[len(pl) // 2]
         pl.sort(key=lambda x: (mid-x)**2)
         ul.sort(key=lambda x: (mid-x)**2)
         self.assertEqual(pl[:], ul[:], 'sort w/ key')
@@ -337,7 +340,7 @@ class ListMixinTest(unittest.TestCase):
     def test_12_arithmetic(self):
         'Arithmetic'
         pl, ul = self.lists_of_len()
-        al = range(10,14)
+        al = list(range(10,14))
         self.assertEqual(list(pl + al), list(ul + al), 'add')
         self.assertEqual(type(ul), type(ul + al), 'type of add result')
         self.assertEqual(list(al + pl), list(al + ul), 'radd')
@@ -362,6 +365,7 @@ class ListMixinTest(unittest.TestCase):
 
         pl, ul = self.lists_of_len()
         self.assertEqual(pl, ul, 'cmp for equal')
+        self.assertFalse(ul == pl + [2], 'cmp for not equal')
         self.assertTrue(pl >= ul, 'cmp for gte self')
         self.assertTrue(pl <= ul, 'cmp for lte self')
         self.assertTrue(ul >= pl, 'cmp for self gte')
@@ -376,6 +380,14 @@ class ListMixinTest(unittest.TestCase):
         self.assertTrue(ul < pl + [2], 'cmp')
         self.assertTrue(ul <= pl + [2], 'cmp')
 
+        # Also works with a custom IndexError
+        ul_longer = ul + [2]
+        ul_longer._IndexError = TypeError
+        ul._IndexError = TypeError
+        self.assertFalse(ul_longer == pl)
+        self.assertFalse(ul == ul_longer)
+        self.assertTrue(ul_longer > ul)
+
         pl[1] = 20
         self.assertTrue(pl > ul, 'cmp for gt self')
         self.assertTrue(ul < pl, 'cmp for self lt')
@@ -385,15 +397,3 @@ class ListMixinTest(unittest.TestCase):
 
 class ListMixinTestSingle(ListMixinTest):
     listType = UserListB
-
-def suite():
-    s = unittest.TestSuite()
-    s.addTest(unittest.makeSuite(ListMixinTest))
-    s.addTest(unittest.makeSuite(ListMixinTestSingle))
-    return s
-
-def run(verbosity=2):
-    unittest.TextTestRunner(verbosity=verbosity).run(suite())
-
-if __name__ == '__main__':
-    run()

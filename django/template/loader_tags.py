@@ -1,8 +1,11 @@
+from collections import defaultdict
+
 from django.conf import settings
-from django.template.base import TemplateSyntaxError, Library, Node, TextNode
-from django.template.defaulttags import token_kwargs
+from django.template.base import TemplateSyntaxError, Library, Node, TextNode,\
+    token_kwargs, Variable
 from django.template.loader import get_template
 from django.utils.safestring import mark_safe
+from django.utils import six
 
 register = Library()
 
@@ -14,19 +17,16 @@ class ExtendsError(Exception):
 class BlockContext(object):
     def __init__(self):
         # Dictionary of FIFO queues.
-        self.blocks = {}
+        self.blocks = defaultdict(list)
 
     def add_blocks(self, blocks):
-        for name, block in blocks.iteritems():
-            if name in self.blocks:
-                self.blocks[name].insert(0, block)
-            else:
-                self.blocks[name] = [block]
+        for name, block in six.iteritems(blocks):
+            self.blocks[name].insert(0, block)
 
     def pop(self, name):
         try:
             return self.blocks[name].pop()
-        except (IndexError, KeyError):
+        except IndexError:
             return None
 
     def push(self, name, block):
@@ -35,7 +35,7 @@ class BlockContext(object):
     def get_block(self, name):
         try:
             return self.blocks[name][-1]
-        except (IndexError, KeyError):
+        except IndexError:
             return None
 
 class BlockNode(Node):
@@ -47,22 +47,21 @@ class BlockNode(Node):
 
     def render(self, context):
         block_context = context.render_context.get(BLOCK_CONTEXT_KEY)
-        context.push()
-        if block_context is None:
-            context['block'] = self
-            result = self.nodelist.render(context)
-        else:
-            push = block = block_context.pop(self.name)
-            if block is None:
-                block = self
-            # Create new block so we can store context without thread-safety issues.
-            block = BlockNode(block.name, block.nodelist)
-            block.context = context
-            context['block'] = block
-            result = block.nodelist.render(context)
-            if push is not None:
-                block_context.push(self.name, push)
-        context.pop()
+        with context.push():
+            if block_context is None:
+                context['block'] = self
+                result = self.nodelist.render(context)
+            else:
+                push = block = block_context.pop(self.name)
+                if block is None:
+                    block = self
+                # Create new block so we can store context without thread-safety issues.
+                block = BlockNode(block.name, block.nodelist)
+                block.context = context
+                context['block'] = block
+                result = block.nodelist.render(context)
+                if push is not None:
+                    block_context.push(self.name, push)
         return result
 
     def super(self):
@@ -75,26 +74,23 @@ class BlockNode(Node):
 class ExtendsNode(Node):
     must_be_first = True
 
-    def __init__(self, nodelist, parent_name, parent_name_expr, template_dirs=None):
+    def __init__(self, nodelist, parent_name, template_dirs=None):
         self.nodelist = nodelist
-        self.parent_name, self.parent_name_expr = parent_name, parent_name_expr
+        self.parent_name = parent_name
         self.template_dirs = template_dirs
-        self.blocks = dict([(n.name, n) for n in nodelist.get_nodes_by_type(BlockNode)])
+        self.blocks = dict((n.name, n) for n in nodelist.get_nodes_by_type(BlockNode))
 
     def __repr__(self):
-        if self.parent_name_expr:
-            return "<ExtendsNode: extends %s>" % self.parent_name_expr.token
-        return '<ExtendsNode: extends "%s">' % self.parent_name
+        return '<ExtendsNode: extends %s>' % self.parent_name.token
 
     def get_parent(self, context):
-        if self.parent_name_expr:
-            parent = self.parent_name_expr.resolve(context)
-        else:
-            parent = self.parent_name
+        parent = self.parent_name.resolve(context)
         if not parent:
             error_msg = "Invalid template name in 'extends' tag: %r." % parent
-            if self.parent_name_expr:
-                error_msg += " Got this from the '%s' variable." % self.parent_name_expr.token
+            if self.parent_name.filters or\
+                    isinstance(self.parent_name.var, Variable):
+                error_msg += " Got this from the '%s' variable." %\
+                    self.parent_name.token
             raise TemplateSyntaxError(error_msg)
         if hasattr(parent, 'render'):
             return parent # parent is a Template object
@@ -133,13 +129,12 @@ class BaseIncludeNode(Node):
 
     def render_template(self, template, context):
         values = dict([(name, var.resolve(context)) for name, var
-                       in self.extra_context.iteritems()])
+                       in six.iteritems(self.extra_context)])
         if self.isolated_context:
             return template.render(context.new(values))
-        context.update(values)
-        output = template.render(context)
-        context.pop()
-        return output
+        with context.push(**values):
+            return template.render(context)
+
 
 class ConstantIncludeNode(BaseIncludeNode):
     def __init__(self, template_path, *args, **kwargs):
@@ -164,8 +159,11 @@ class IncludeNode(BaseIncludeNode):
 
     def render(self, context):
         try:
-            template_name = self.template_name.resolve(context)
-            template = get_template(template_name)
+            template = self.template_name.resolve(context)
+            # Does this quack like a Template?
+            if not callable(getattr(template, 'render', None)):
+                # If not, we'll try get_template
+                template = get_template(template)
             return self.render_template(template, context)
         except:
             if settings.TEMPLATE_DEBUG:
@@ -177,6 +175,7 @@ def do_block(parser, token):
     """
     Define a block that can be overridden by child templates.
     """
+    # token.split_contents() isn't useful here because this tag doesn't accept variable as arguments
     bits = token.contents.split()
     if len(bits) != 2:
         raise TemplateSyntaxError("'%s' tag takes only one argument" % bits[0])
@@ -189,8 +188,14 @@ def do_block(parser, token):
         parser.__loaded_blocks.append(block_name)
     except AttributeError: # parser.__loaded_blocks isn't a list yet
         parser.__loaded_blocks = [block_name]
-    nodelist = parser.parse(('endblock', 'endblock %s' % block_name))
-    parser.delete_first_token()
+    nodelist = parser.parse(('endblock',))
+
+    # This check is kept for backwards-compatibility. See #3100.
+    endblock = parser.next_token()
+    acceptable_endblocks = ('endblock', 'endblock %s' % block_name)
+    if endblock.contents not in acceptable_endblocks:
+        parser.invalid_block_tag(endblock, 'endblock', acceptable_endblocks)
+
     return BlockNode(block_name, nodelist)
 
 @register.tag('extends')
@@ -202,20 +207,16 @@ def do_extends(parser, token):
     uses the literal value "base" as the name of the parent template to extend,
     or ``{% extends variable %}`` uses the value of ``variable`` as either the
     name of the parent template to extend (if it evaluates to a string) or as
-    the parent tempate itelf (if it evaluates to a Template object).
+    the parent template itself (if it evaluates to a Template object).
     """
     bits = token.split_contents()
     if len(bits) != 2:
         raise TemplateSyntaxError("'%s' takes one argument" % bits[0])
-    parent_name, parent_name_expr = None, None
-    if bits[1][0] in ('"', "'") and bits[1][-1] == bits[1][0]:
-        parent_name = bits[1][1:-1]
-    else:
-        parent_name_expr = parser.compile_filter(bits[1])
+    parent_name = parser.compile_filter(bits[1])
     nodelist = parser.parse()
     if nodelist.get_nodes_by_type(ExtendsNode):
         raise TemplateSyntaxError("'%s' cannot appear more than once in the same template" % bits[0])
-    return ExtendsNode(nodelist, parent_name, parent_name_expr)
+    return ExtendsNode(nodelist, parent_name)
 
 @register.tag('include')
 def do_include(parser, token):

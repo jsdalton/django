@@ -1,4 +1,3 @@
-import datetime
 import time
 from django import forms
 from django.forms.util import ErrorDict
@@ -6,9 +5,10 @@ from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.comments.models import Comment
 from django.utils.crypto import salted_hmac, constant_time_compare
-from django.utils.encoding import force_unicode
+from django.utils.encoding import force_text
 from django.utils.text import get_text_list
-from django.utils.translation import ungettext, ugettext_lazy as _
+from django.utils import timezone
+from django.utils.translation import ungettext, ugettext, ugettext_lazy as _
 
 COMMENT_MAX_LENGTH = getattr(settings,'COMMENT_MAX_LENGTH', 3000)
 
@@ -133,12 +133,12 @@ class CommentDetailsForm(CommentSecurityForm):
         """
         return dict(
             content_type = ContentType.objects.get_for_model(self.target_object),
-            object_pk    = force_unicode(self.target_object._get_pk_val()),
+            object_pk    = force_text(self.target_object._get_pk_val()),
             user_name    = self.cleaned_data["name"],
             user_email   = self.cleaned_data["email"],
             user_url     = self.cleaned_data["url"],
             comment      = self.cleaned_data["comment"],
-            submit_date  = datetime.datetime.now(),
+            submit_date  = timezone.now(),
             site_id      = settings.SITE_ID,
             is_public    = True,
             is_removed   = False,
@@ -175,8 +175,10 @@ class CommentDetailsForm(CommentSecurityForm):
             if bad_words:
                 raise forms.ValidationError(ungettext(
                     "Watch your mouth! The word %s is not allowed here.",
-                    "Watch your mouth! The words %s are not allowed here.", len(bad_words))
-                    % get_text_list(['"%s%s%s"' % (i[0], '-'*(len(i)-2), i[-1]) for i in bad_words], 'and'))
+                    "Watch your mouth! The words %s are not allowed here.",
+                    len(bad_words)) % get_text_list(
+                        ['"%s%s%s"' % (i[0], '-'*(len(i)-2), i[-1])
+                         for i in bad_words], ugettext('and')))
         return comment
 
 class CommentForm(CommentDetailsForm):

@@ -1,5 +1,3 @@
-from __future__ import absolute_import
-
 from django import http
 from django.conf import settings
 from django.contrib import comments
@@ -15,7 +13,6 @@ from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_POST
 
 
-
 class CommentPostBadRequest(http.HttpResponseBadRequest):
     """
     Response returned when a comment post is invalid. If ``DEBUG`` is on a
@@ -26,6 +23,7 @@ class CommentPostBadRequest(http.HttpResponseBadRequest):
         super(CommentPostBadRequest, self).__init__()
         if settings.DEBUG:
             self.content = render_to_string("comments/400-debug.html", {"why": why})
+
 
 @csrf_protect
 @require_POST
@@ -40,12 +38,9 @@ def post_comment(request, next=None, using=None):
     data = request.POST.copy()
     if request.user.is_authenticated():
         if not data.get('name', ''):
-            data["name"] = request.user.get_full_name() or request.user.username
+            data["name"] = request.user.get_full_name() or request.user.get_username()
         if not data.get('email', ''):
             data["email"] = request.user.email
-
-    # Check to see if the POST data overrides the view's next argument.
-    next = data.get("next", next)
 
     # Look up the object we're trying to comment about
     ctype = data.get("content_type")
@@ -66,7 +61,7 @@ def post_comment(request, next=None, using=None):
         return CommentPostBadRequest(
             "No object matching content-type %r and object PK %r exists." % \
                 (escape(ctype), escape(object_pk)))
-    except (ValueError, ValidationError), e:
+    except (ValueError, ValidationError) as e:
         return CommentPostBadRequest(
             "Attempting go get content-type %r and object PK %r exists raised %s" % \
                 (escape(ctype), escape(object_pk), e.__class__.__name__))
@@ -89,18 +84,18 @@ def post_comment(request, next=None, using=None):
             # These first two exist for purely historical reasons.
             # Django v1.0 and v1.1 allowed the underscore format for
             # preview templates, so we have to preserve that format.
-            "comments/%s_%s_preview.html" % (model._meta.app_label, model._meta.module_name),
+            "comments/%s_%s_preview.html" % (model._meta.app_label, model._meta.model_name),
             "comments/%s_preview.html" % model._meta.app_label,
             # Now the usual directory based template hierarchy.
-            "comments/%s/%s/preview.html" % (model._meta.app_label, model._meta.module_name),
+            "comments/%s/%s/preview.html" % (model._meta.app_label, model._meta.model_name),
             "comments/%s/preview.html" % model._meta.app_label,
             "comments/preview.html",
         ]
         return render_to_response(
             template_list, {
-                "comment" : form.data.get("comment", ""),
-                "form" : form,
-                "next": next,
+                "comment": form.data.get("comment", ""),
+                "form": form,
+                "next": data.get("next", next),
             },
             RequestContext(request, {})
         )
@@ -113,9 +108,9 @@ def post_comment(request, next=None, using=None):
 
     # Signal that the comment is about to be saved
     responses = signals.comment_will_be_posted.send(
-        sender  = comment.__class__,
-        comment = comment,
-        request = request
+        sender=comment.__class__,
+        comment=comment,
+        request=request
     )
 
     for (receiver, response) in responses:
@@ -126,15 +121,15 @@ def post_comment(request, next=None, using=None):
     # Save the comment and signal that it was saved
     comment.save()
     signals.comment_was_posted.send(
-        sender  = comment.__class__,
-        comment = comment,
-        request = request
+        sender=comment.__class__,
+        comment=comment,
+        request=request
     )
 
-    return next_redirect(data, next, comment_done, c=comment._get_pk_val())
+    return next_redirect(request, fallback=next or 'comments-comment-done',
+        c=comment._get_pk_val())
 
 comment_done = confirmation_view(
-    template = "comments/posted.html",
-    doc = """Display a "comment was posted" success page."""
+    template="comments/posted.html",
+    doc="""Display a "comment was posted" success page."""
 )
-

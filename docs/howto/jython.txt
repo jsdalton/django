@@ -15,7 +15,7 @@ This document will get you up and running with Django on top of Jython.
 Installing Jython
 =================
 
-Django works with Jython versions 2.5b3 and higher. Download Jython at 
+Django works with Jython versions 2.5b3 and higher. Download Jython at
 http://www.jython.org/.
 
 Creating a servlet container
@@ -30,7 +30,7 @@ such as `Apache Tomcat`_. Full JavaEE applications servers such as `GlassFish`_
 or `JBoss`_ are also OK, if you need the extra features they include.
 
 .. _`Apache Tomcat`: http://tomcat.apache.org/
-.. _GlassFish: https://glassfish.dev.java.net/
+.. _GlassFish: http://glassfish.java.net/
 .. _JBoss: http://www.jboss.org/
 
 Installing Django

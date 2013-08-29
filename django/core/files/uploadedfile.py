@@ -3,15 +3,12 @@ Classes representing uploaded files.
 """
 
 import os
-try:
-    from cStringIO import StringIO
-except ImportError:
-    from StringIO import StringIO
+from io import BytesIO
 
 from django.conf import settings
 from django.core.files.base import File
 from django.core.files import temp as tempfile
-from django.utils.encoding import smart_str
+from django.utils.encoding import force_str
 
 __all__ = ('UploadedFile', 'TemporaryUploadedFile', 'InMemoryUploadedFile',
            'SimpleUploadedFile')
@@ -26,15 +23,16 @@ class UploadedFile(File):
     """
     DEFAULT_CHUNK_SIZE = 64 * 2**10
 
-    def __init__(self, file=None, name=None, content_type=None, size=None, charset=None):
+    def __init__(self, file=None, name=None, content_type=None, size=None, charset=None, content_type_extra=None):
         super(UploadedFile, self).__init__(file, name)
         self.size = size
         self.content_type = content_type
         self.charset = charset
+        self.content_type_extra = content_type_extra
 
     def __repr__(self):
-        return "<%s: %s (%s)>" % (
-            self.__class__.__name__, smart_str(self.name), self.content_type)
+        return force_str("<%s: %s (%s)>" % (
+            self.__class__.__name__, self.name, self.content_type))
 
     def _get_name(self):
         return self._name
@@ -58,13 +56,13 @@ class TemporaryUploadedFile(UploadedFile):
     """
     A file uploaded to a temporary location (i.e. stream-to-disk).
     """
-    def __init__(self, name, content_type, size, charset):
+    def __init__(self, name, content_type, size, charset, content_type_extra):
         if settings.FILE_UPLOAD_TEMP_DIR:
             file = tempfile.NamedTemporaryFile(suffix='.upload',
                 dir=settings.FILE_UPLOAD_TEMP_DIR)
         else:
             file = tempfile.NamedTemporaryFile(suffix='.upload')
-        super(TemporaryUploadedFile, self).__init__(file, name, content_type, size, charset)
+        super(TemporaryUploadedFile, self).__init__(file, name, content_type, size, charset, content_type_extra)
 
     def temporary_file_path(self):
         """
@@ -75,7 +73,7 @@ class TemporaryUploadedFile(UploadedFile):
     def close(self):
         try:
             return self.file.close()
-        except OSError, e:
+        except OSError as e:
             if e.errno != 2:
                 # Means the file was moved or deleted before the tempfile
                 # could unlink it.  Still sets self.file.close_called and
@@ -86,8 +84,8 @@ class InMemoryUploadedFile(UploadedFile):
     """
     A file uploaded into memory (i.e. stream-to-memory).
     """
-    def __init__(self, file, field_name, name, content_type, size, charset):
-        super(InMemoryUploadedFile, self).__init__(file, name, content_type, size, charset)
+    def __init__(self, file, field_name, name, content_type, size, charset, content_type_extra):
+        super(InMemoryUploadedFile, self).__init__(file, name, content_type, size, charset, content_type_extra)
         self.field_name = field_name
 
     def open(self, mode=None):
@@ -110,9 +108,9 @@ class SimpleUploadedFile(InMemoryUploadedFile):
     A simple representation of a file, which just has content, size, and a name.
     """
     def __init__(self, name, content, content_type='text/plain'):
-        content = content or ''
-        super(SimpleUploadedFile, self).__init__(StringIO(content), None, name,
-                                                 content_type, len(content), None)
+        content = content or b''
+        super(SimpleUploadedFile, self).__init__(BytesIO(content), None, name,
+                                                 content_type, len(content), None, None)
 
     def from_dict(cls, file_dict):
         """

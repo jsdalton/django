@@ -1,4 +1,3 @@
-import os
 from optparse import make_option
 from django.contrib.gis import gdal
 from django.core.management.base import LabelCommand, CommandError
@@ -54,7 +53,7 @@ class Command(LabelCommand):
         make_option('--multi-geom', action='store_true', dest='multi_geom', default=False,
                     help='Treat the geometry in the data source as a geometry collection.'),
         make_option('--name-field', dest='name_field',
-                    help='Specifies a field name to return for the `__unicode__` function.'),
+                    help='Specifies a field name to return for the `__unicode__`/`__str__` function.'),
         make_option('--no-imports', action='store_false', dest='imports', default=True,
                     help='Do not include `from django.contrib.gis.db import models` '
                     'statement.'),
@@ -82,12 +81,12 @@ class Command(LabelCommand):
             raise CommandError('GDAL is required to inspect geospatial data sources.')
 
         # Removing options with `None` values.
-        options = dict([(k, v) for k, v in options.items() if not v is None])
+        options = dict((k, v) for k, v in options.items() if not v is None)
 
         # Getting the OGR DataSource from the string parameter.
         try:
             ds = gdal.DataSource(data_source)
-        except gdal.OGRException, msg:
+        except gdal.OGRException as msg:
             raise CommandError(msg)
 
         # Whether the user wants to generate the LayerMapping dictionary as well.
@@ -111,7 +110,7 @@ class Command(LabelCommand):
             mapping_dict = mapping(ds, **kwargs)
             # This extra legwork is so that the dictionary definition comes
             # out in the same order as the fields in the model definition.
-            rev_mapping = dict([(v, k) for k, v in mapping_dict.items()])
+            rev_mapping = dict((v, k) for k, v in mapping_dict.items())
             output.extend(['', '# Auto-generated `LayerMapping` dictionary for %s model' % model_name,
                            '%s_mapping = {' % model_name.lower()])
             output.extend(["    '%s' : '%s'," % (rev_mapping[ogr_fld], ogr_fld) for ogr_fld in ds[options['layer_key']].fields])

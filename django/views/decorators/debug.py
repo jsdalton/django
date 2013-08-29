@@ -1,5 +1,7 @@
 import functools
 
+from django.http import HttpRequest
+
 
 def sensitive_variables(*variables):
     """
@@ -26,13 +28,13 @@ def sensitive_variables(*variables):
     """
     def decorator(func):
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def sensitive_variables_wrapper(*func_args, **func_kwargs):
             if variables:
-                wrapper.sensitive_variables = variables
+                sensitive_variables_wrapper.sensitive_variables = variables
             else:
-                wrapper.sensitive_variables = '__ALL__'
-            return func(*args, **kwargs)
-        return wrapper
+                sensitive_variables_wrapper.sensitive_variables = '__ALL__'
+            return func(*func_args, **func_kwargs)
+        return sensitive_variables_wrapper
     return decorator
 
 
@@ -61,11 +63,15 @@ def sensitive_post_parameters(*parameters):
     """
     def decorator(view):
         @functools.wraps(view)
-        def wrapper(request, *args, **kwargs):
+        def sensitive_post_parameters_wrapper(request, *args, **kwargs):
+            assert isinstance(request, HttpRequest), (
+              "sensitive_post_parameters didn't receive an HttpRequest. If you "
+              "are decorating a classmethod, be sure to use @method_decorator."
+            )
             if parameters:
                 request.sensitive_post_parameters = parameters
             else:
                 request.sensitive_post_parameters = '__ALL__'
             return view(request, *args, **kwargs)
-        return wrapper
+        return sensitive_post_parameters_wrapper
     return decorator
